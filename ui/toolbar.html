@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>OniScreen</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  html, body { background: transparent; }
+  body { padding: 8px; }
+  .bar {
+    display: inline-flex; align-items: center; gap: 4px; padding: 6px;
+    background: var(--oni-bg-surface); border: 1px solid var(--oni-border-default);
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .brand { width: 22px; height: 22px; margin: 0 6px 0 4px; flex: none; }
+  .stack { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; }
+  .bar { cursor: grab; }
+  .bar.sub { padding: 4px 6px; gap: 4px; border-radius: 12px; }
+  /* 옵션 줄은 필요할 때만(그리기 도구·보드·녹화 중) 나타나서 평소 툴바는 한 줄로 컴팩트하다 */
+  .stack .sub { display: none; }
+  .stack.has-sub:not(.folded) .sub { display: flex; justify-content: space-between; }
+  #pw { width: 84px; height: 20px; margin: 0 2px; accent-color: var(--oni-action-default); cursor: pointer; }
+  .pwv { min-width: 34px; text-align: center; font: 500 12px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; font-variant-numeric: tabular-nums; color: var(--oni-text-secondary); }
+  .lbl { font: 500 12px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; color: var(--oni-text-muted); padding: 0 2px 0 4px; white-space: nowrap; }
+  .btn.wide { width: auto; padding: 0 8px; gap: 6px; grid-auto-flow: column; font: 500 12px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  .btn.rec[aria-pressed="true"] { background: var(--oni-error-soft); color: var(--oni-status-error); }
+  .btn.rec[aria-pressed="true"] svg circle { fill: currentColor; }
+  .btn.rec[aria-pressed="true"] svg { animation: recpulse 1.6s ease-in-out infinite; }
+  @keyframes recpulse { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .btn.rec[aria-pressed="true"] svg { animation: none; } }
+  .btn[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+  .bar.moving { cursor: grabbing; }
+  .bar .btn, .bar input { cursor: pointer; }
+  .zoom { display: inline-flex; align-items: center; height: var(--oni-control); border-radius: 8px; background: var(--oni-bg-subtle); padding: 0 2px; }
+  .zoom .btn { width: var(--oni-control-sm); height: var(--oni-control-sm); }
+  .zoom output { min-width: 44px; text-align: center; font: 500 13px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; font-variant-numeric: tabular-nums; }
+  .group { display: flex; gap: 2px; }
+  #zslider { width: 96px; height: 20px; margin: 0 4px; accent-color: var(--oni-action-default); cursor: pointer; }
+  .tip {
+    position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); white-space: nowrap;
+    background: var(--oni-text-primary); color: #fff; font-size: 12px; line-height: 18px; padding: 3px 8px;
+    border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 2;
+  }
+  .btn:hover .tip { opacity: 1; }
+  kbd { font: 500 11px/1 "Noto Sans KR", sans-serif; background: rgba(255, 255, 255, .18); border-radius: 4px; padding: 2px 4px; margin-left: 6px; }
+
+  /* 접힘: 아이콘 · 포인터 강조 · 펼치기만 남김 */
+  .bar.folded { border-radius: 999px; padding: 4px; }
+  .bar.folded > :not(.keep) { display: none; }
+  .bar.folded .btn { border-radius: 50%; width: var(--oni-control-sm); height: var(--oni-control-sm); }
+  .bar.folded .brand { margin: 0 2px 0 4px; }
+  #fold svg { transition: transform .12s; }
+  .bar.folded #fold svg { transform: rotate(180deg); }
+</style>
+</head>
+<body>
+<div class="stack" id="stack">
+<div class="bar" id="bar">
+  <svg class="brand keep" role="img" viewBox="0 0 22 22" aria-label="OniScreen">
+    <rect width="22" height="22" rx="6" fill="#1B70C9"/>
+    <rect x="3.7" y="4.9" width="14.6" height="9.6" rx="1.3" fill="#fff"/>
+    <path d="M11 14.5v2M7.9 16.8h6.2" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="10.2" cy="9.4" r="2.5" fill="#DCEBFB" stroke="#1B70C9" stroke-width="1.2"/>
+    <path d="M12.1 11.3 14 13.2" stroke="#1B70C9" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>
+
+  <div class="zoom" role="group" aria-label="확대">
+    <button class="btn" id="zout" aria-label="축소"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg><span class="tip">축소<kbd>Ctrl 8</kbd></span></button>
+    <input type="range" id="zslider" min="1" max="6" step="0.25" value="1" aria-label="확대 배율">
+    <output id="zval">1.0×</output>
+    <svg id="zhold" hidden viewBox="0 0 24 24" aria-label="화면 고정됨" style="width:14px;height:14px;stroke:var(--oni-action-default);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;margin-right:2px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+    <button class="btn" id="zin" aria-label="확대"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg><span class="tip">확대<kbd>Ctrl 9</kbd></span></button>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group" id="tools" role="group" aria-label="도구">
+    <button class="btn" data-tool="pen" aria-pressed="false" aria-label="펜"><svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/></svg><span class="tip">펜<kbd>Ctrl 2</kbd></span></button>
+    <button class="btn" data-tool="hl" aria-pressed="false" aria-label="형광펜"><svg viewBox="0 0 24 24"><path d="M9 14l6-6 3 3-6 6H9z"/><path d="M4 20h7"/></svg><span class="tip">형광펜<kbd>Ctrl 3</kbd></span></button>
+    <button class="btn" data-tool="eraser" aria-pressed="false" aria-label="지우개"><svg viewBox="0 0 24 24"><path d="M8 19h11M5.5 14.5l8-8a2 2 0 0 1 3 0l2 2a2 2 0 0 1 0 3L11 19H8l-2.5-2.5a2 2 0 0 1 0-2z"/></svg><span class="tip">지우개<kbd>Ctrl 4</kbd></span></button>
+    <button class="btn" data-tool="text" aria-pressed="false" aria-label="텍스트"><svg viewBox="0 0 24 24"><path d="M5 6V4.5h14V6M12 4.5V19.5M9 19.5h6"/></svg><span class="tip">텍스트<kbd>Ctrl 5</kbd></span></button>
+  </div>
+
+  <button class="btn keep" id="ptrBtn" aria-pressed="true" aria-label="포인터 강조" style="margin-left:2px">
+    <svg viewBox="0 0 24 24"><path d="m6 4 12 7-5.2 1.6L10.5 18z"/><path d="M19 4.5l1.2-1.2M20.5 8h1.5M16 3V1.5"/></svg>
+    <span class="tip">포인터 강조<kbd>Ctrl 6</kbd></span>
+  </button>
+
+  <div class="sep"></div>
+
+  <button class="btn" id="undo" aria-label="실행 취소"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 8h-3"/></svg><span class="tip">실행 취소<kbd>Ctrl Z</kbd></span></button>
+  <button class="btn danger" id="clear" aria-label="모두 지우기"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg><span class="tip">모두 지우기<kbd>Ctrl 7</kbd></span></button>
+  <button class="btn" id="gear" aria-label="설정"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span class="tip">설정</span></button>
+
+  <div class="sep"></div>
+  <button class="btn keep" id="fold" aria-label="접기"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg><span class="tip">접기 / 펼치기</span></button>
+  <button class="btn keep danger" id="quit" aria-label="종료"><svg viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M7 6.5a8 8 0 1 0 10 0"/></svg><span class="tip">종료<kbd>Ctrl Alt Q</kbd></span></button>
+</div>
+
+<div class="bar sub" id="sub" role="toolbar" aria-label="그리기 옵션">
+  <span class="lbl">도형</span>
+  <div class="group" id="shapes" role="group" aria-label="도형">
+    <button class="btn" data-shape="line" aria-pressed="false" aria-label="선"><svg viewBox="0 0 24 24"><path d="M5 19 19 5"/></svg><span class="tip">선<kbd>Shift+드래그</kbd></span></button>
+    <button class="btn" data-shape="rect" aria-pressed="false" aria-label="사각형"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/></svg><span class="tip">사각형<kbd>Ctrl+드래그</kbd></span></button>
+    <button class="btn" data-shape="ellipse" aria-pressed="false" aria-label="타원"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg><span class="tip">타원<kbd>Tab+드래그</kbd></span></button>
+    <button class="btn" data-shape="arrow" aria-pressed="false" aria-label="화살표"><svg viewBox="0 0 24 24"><path d="M5 19 19 5M10 5h9v9"/></svg><span class="tip">화살표<kbd>Ctrl+Shift+드래그</kbd></span></button>
+  </div>
+  <button class="btn" id="hlShape" aria-pressed="false" aria-label="형광 도형"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2" style="fill:currentColor;fill-opacity:.25"/></svg><span class="tip">도형을 형광으로 채우기</span></button>
+  <div class="sep"></div>
+  <span class="lbl">굵기</span>
+  <input type="range" id="pw" min="2" max="40" step="1" value="4" aria-label="펜 굵기">
+  <output class="pwv" id="pwv">4px</output>
+  <div class="sep"></div>
+  <div class="group" role="group" aria-label="바탕">
+    <button class="btn" id="boardW" aria-pressed="false" aria-label="화이트보드"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="1.5"/><path d="M9 20h6"/></svg><span class="tip">화이트보드<kbd>Ctrl 0</kbd></span></button>
+    <button class="btn" id="boardK" aria-pressed="false" aria-label="칠판"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="1.5" style="fill:currentColor"/><path d="M9 20h6"/></svg><span class="tip">칠판<kbd>Ctrl 0</kbd></span></button>
+  </div>
+  <div class="sep"></div>
+  <button class="btn" id="shotCopy" aria-label="스크린샷 복사"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h1"/></svg><span class="tip">화면 복사<kbd>Ctrl Alt C</kbd></span></button>
+  <button class="btn" id="shotSave" aria-label="스크린샷 저장"><svg viewBox="0 0 24 24"><path d="M12 4v10M8 10.5 12 14.5l4-4M5 19h14"/></svg><span class="tip">화면 저장 (사진\OniScreen)<kbd>Ctrl Alt S</kbd></span></button>
+  <div class="sep"></div>
+  <button class="btn wide rec" id="rec" aria-pressed="false" aria-label="녹화"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/></svg><span id="recT">녹화</span><span class="tip">화면 녹화 (MP4)<kbd>Ctrl Alt R</kbd></span></button>
+</div>
+</div>
+<script src="shared.js"></script>
+<script src="toolbar.js"></script>
+</body>
+</html>

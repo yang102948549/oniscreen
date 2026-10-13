@@ -1,0 +1,12 @@
+/target/
+/dist/
+/reports/local-*.txt
+
+/node_modules/
+
+# 기기별 설정(빌드 산출물 경로) · OneDrive 충돌 사본
+/.cargo/config.toml
+/package-*.json
+!/package-lock.json
+/Cargo-*.lock
+/src-tauri/gen/

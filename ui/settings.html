@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>OniScreen 설정</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  body { background: var(--oni-bg-canvas); padding: 16px 20px 18px; overflow: auto; user-select: none; }
+  header { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
+  h1 { font: 700 18px/28px inherit; margin: 0; }
+  h2 { font: 500 12px/18px inherit; color: var(--oni-text-muted); margin: 0 0 6px 2px; }
+  /* 섹션을 열로 배치: 위쪽은 포인터 · 확대 · 필기 3열, 아래는 단축키(3열) */
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
+  .wide { margin-top: 14px; }
+  .card { background: var(--oni-bg-surface); border: 1px solid var(--oni-border-default); border-radius: 8px; padding: 2px 12px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 36px; border-bottom: 1px solid var(--oni-bg-subtle); }
+  .row:last-child { border-bottom: 0; }
+  .row label { color: var(--oni-text-primary); cursor: pointer; flex: 1; font-size: 13px; line-height: 18px; }
+  input[type=checkbox] { accent-color: var(--oni-focus); width: 16px; height: 16px; flex: none; }
+  select { font: inherit; font-size: 12px; max-width: 128px; padding: 3px 4px; border: 1px solid var(--oni-border-default); border-radius: 6px; background: var(--oni-bg-surface); color: var(--oni-text-primary); }
+  input[type=range] { accent-color: var(--oni-focus); width: 84px; }
+  .val { min-width: 34px; text-align: right; font: 500 12px/1 inherit; color: var(--oni-text-secondary); font-variant-numeric: tabular-nums; }
+  .quit {
+    height: 32px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--oni-border-default); background: var(--oni-bg-surface); color: var(--oni-status-error); font: 500 13px/1 inherit;
+  }
+  .quit:hover { background: var(--oni-error-soft); }
+  /* 단축키: 열마다 항목이 이어서 흐르게 */
+  #keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: column; grid-template-rows: repeat(5, auto); column-gap: 18px; }
+  .krow { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 34px; border-bottom: 1px solid var(--oni-bg-subtle); }
+  .krow label { font-size: 13px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kbtn { width: 104px; height: 26px; padding: 0 6px; border: 1px solid var(--oni-border-default); border-radius: 6px; background: var(--oni-bg-surface); color: var(--oni-text-primary); font: 500 12px/1 inherit; cursor: pointer; flex: none; }
+  .kbtn:hover { background: var(--oni-bg-subtle); }
+  .kbtn.rec { border-color: var(--oni-focus); background: var(--oni-info-soft); color: var(--oni-action-default); }
+  .kreset { width: 26px; height: 26px; flex: none; }
+  .kreset svg { width: 15px; height: 15px; }
+  .keyhead { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 2px; }
+  .keyhead .row { min-height: 0; border: 0; gap: 8px; }
+  .hint { font-size: 12px; line-height: 18px; color: var(--oni-text-muted); margin: 10px 2px 0; }
+</style>
+</head>
+<body>
+<header><h1>설정</h1><button class="quit" id="quit">OniScreen 종료</button></header>
+
+<div class="cols">
+  <section>
+    <h2>포인터 강조</h2>
+    <div class="card">
+      <div class="row"><label for="haloOn">포인터 후광</label><input type="checkbox" id="haloOn"></div>
+      <div class="row"><label for="ripple">클릭 파문</label><input type="checkbox" id="ripple"></div>
+      <div class="row"><label for="reduce">움직임 줄이기</label><input type="checkbox" id="reduce"></div>
+      <div class="row"><label for="size">크기</label><input type="range" id="size" min="28" max="80"><span class="val" id="sizeV"></span></div>
+      <div class="row"><label for="opac">투명도</label><input type="range" id="opac" min="10" max="100" step="5"><span class="val" id="opacV"></span></div>
+      <div class="row"><label>색상</label><div class="dots" id="hcolors" role="radiogroup" aria-label="후광 색상"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>확대</h2>
+    <div class="card">
+      <div class="row"><label for="zdef">기본 배율</label><input type="range" id="zdef" min="1.25" max="4" step="0.25"><span class="val" id="zdefV"></span></div>
+      <div class="row"><label for="zstep">배율 단계</label><input type="range" id="zstep" min="0.25" max="1" step="0.25"><span class="val" id="zstepV"></span></div>
+      <div class="row"><label for="zladder">휠을 2배씩</label><input type="checkbox" id="zladder"></div>
+      <div class="row"><label for="holdKey">화면 고정 키</label><select id="holdKey"><option value="space">Space</option><option value="shift">Shift</option><option value="ctrl">Ctrl</option><option value="f8">F8</option><option value="none">없음</option></select></div>
+      <div class="row"><label for="drawView">필기 중 화면</label><select id="drawView"><option value="stroke">선 긋는 동안 고정</option><option value="live">계속 따라감</option><option value="always">도구 켜면 고정</option></select></div>
+      <div class="row"><label for="ztarget">확대할 화면</label><select id="ztarget"></select></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>필기</h2>
+    <div class="card">
+      <div class="row"><label>펜 색상</label><div class="dots" id="pcolors" role="radiogroup" aria-label="펜 색상"></div></div>
+      <div class="row"><label for="ts">글자 크기</label><input type="range" id="ts" min="14" max="72" step="2"><span class="val" id="tsV"></span></div>
+      <div class="row"><label for="pw">펜 굵기</label><input type="range" id="pw" min="2" max="40"><span class="val" id="pwV"></span></div>
+    </div>
+  </section>
+</div>
+
+<section class="wide">
+  <div class="keyhead"><h2>단축키</h2><div class="row"><label for="hk">전역 단축키 사용</label><input type="checkbox" id="hk"></div></div>
+  <div class="card"><div id="keys"></div></div>
+</section>
+
+<p class="hint">단축키 칸을 누르고 새 조합(Ctrl/Alt/Shift 포함)을 누르세요 · Esc 취소 · ↺ 기본값. 확대 중에는 Ctrl+↑/↓, Alt+휠로도 확대·축소하고, 화면 고정 키를 누르고 있으면 화면이 멈춰 툴바로 이동할 수 있습니다(툴바 가까이에서는 자동으로 느려짐).<br>그리는 동안: 드래그 + Shift 선 · Ctrl 사각형 · Tab 타원 · Ctrl+Shift 화살표 · Ctrl+휠 펜 굵기 · R G B O Y K W 색상. 화면 저장은 사진\OniScreen, 녹화는 동영상\OniScreen(영상만).<br>확대할 화면이 "자동"이면 마지막으로 마우스를 두고 작업한 화면을 확대합니다.</p>
+
+<script src="shared.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

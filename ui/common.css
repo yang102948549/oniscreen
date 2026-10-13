@@ -1,0 +1,48 @@
+/* Oni School 토큰 (Figma Components v0.1 · 00 Foundations) */
+:root {
+  --oni-bg-canvas: #FAFAF9;
+  --oni-bg-surface: #FFFFFF;
+  --oni-bg-subtle: #F3F3F1;
+  --oni-border-default: #DCDCD6;
+  --oni-text-primary: #292927;
+  --oni-text-secondary: #595955;
+  --oni-text-muted: #71716B;
+  --oni-action-default: #1B70C9;
+  --oni-focus: #2383E2;
+  --oni-info-soft: #EAF3FD;
+  --oni-status-error: #C43F35;
+  --oni-error-soft: #FDEEEB;
+  --oni-control: 36px;
+  --oni-control-sm: 28px;
+  --shadow: 0 1px 2px rgba(41, 41, 39, .06), 0 6px 20px rgba(41, 41, 39, .10);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  font: 400 14px/22px "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  color: var(--oni-text-primary);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sep { width: 1px; height: 20px; background: var(--oni-border-default); margin: 0 4px; flex: none; }
+.btn {
+  width: var(--oni-control); height: var(--oni-control); flex: none;
+  display: grid; place-items: center; border: 0; padding: 0;
+  background: transparent; color: var(--oni-text-secondary);
+  border-radius: 8px; cursor: pointer; position: relative;
+}
+.btn:hover { background: var(--oni-bg-subtle); color: var(--oni-text-primary); }
+.btn:focus-visible { outline: 2px solid var(--oni-focus); outline-offset: 1px; }
+.btn[aria-pressed="true"] { background: var(--oni-info-soft); color: var(--oni-action-default); }
+.btn.danger:hover { background: var(--oni-error-soft); color: var(--oni-status-error); }
+.btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.dots { display: flex; gap: 2px; padding: 0 2px; }
+.dot {
+  width: var(--oni-control-sm); height: var(--oni-control-sm); border: 0; background: transparent;
+  display: grid; place-items: center; border-radius: 50%; cursor: pointer; padding: 0;
+}
+.dot i { width: 16px; height: 16px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+.dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--oni-bg-surface), 0 0 0 4px var(--oni-focus); }
+.dot:focus-visible { outline: 2px solid var(--oni-focus); outline-offset: 2px; }

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oni Zoom 디자인 방향</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* ── Oni School 토큰 (Figma v0.1 · 00 Foundations 에서 추출) ── */
+:root{
+  --oni-bg-canvas:#FAFAF9;      /* 화이톤 */
+  --oni-bg-surface:#FFFFFF;
+  --oni-bg-subtle:#F3F3F1;
+  --oni-border-default:#DCDCD6;
+  --oni-text-primary:#292927;
+  --oni-text-secondary:#595955;
+  --oni-text-muted:#71716B;
+  --oni-action-default:#1B70C9; /* 액션 */
+  --oni-focus:#2383E2;          /* 노션 블루 · 포커스/활성 */
+  --oni-info-soft:#EAF3FD;
+  --oni-success:#087D6B; --oni-warning:#956000; --oni-error:#C43F35;
+  --oni-success-accent:#20AD96; --oni-warning-accent:#EBA640; --oni-error-accent:#EF786C;
+  --oni-radius-6:6px; --oni-radius-8:8px; --oni-radius-pill:999px;
+  --oni-space-4:4px; --oni-space-8:8px; --oni-space-12:12px; --oni-space-16:16px;
+  --oni-control:36px; --oni-control-sm:28px;
+  --shadow:0 1px 2px rgba(41,41,39,.06),0 6px 20px rgba(41,41,39,.10);
+  --ink:var(--oni-text-primary);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--oni-bg-canvas);color:var(--oni-text-primary);
+  font:400 14px/22px "Noto Sans KR",system-ui,sans-serif;padding:32px 16px 64px}
+main{max-width:960px;margin:0 auto}
+h1{font:700 22px/32px inherit;margin:0 0 4px}
+h2{font:700 18px/28px inherit;margin:40px 0 4px}
+.cap{font-size:12px;line-height:18px;color:var(--oni-text-secondary);margin:0 0 16px}
+.stage{background:var(--oni-bg-subtle);border:1px solid var(--oni-border-default);
+  border-radius:var(--oni-radius-8);padding:24px;display:grid;gap:24px;justify-items:center}
+
+/* ── 컴팩트 툴바 ── */
+.bar{display:inline-flex;align-items:center;gap:4px;padding:6px;background:var(--oni-bg-surface);
+  border:1px solid var(--oni-border-default);border-radius:12px;box-shadow:var(--shadow);user-select:none}
+.sep{width:1px;height:20px;background:var(--oni-border-default);margin:0 4px}
+.brand{width:22px;height:22px;margin:0 6px 0 4px;flex:none;cursor:grab}
+.btn{width:var(--oni-control);height:var(--oni-control);display:grid;place-items:center;border:0;
+  background:transparent;color:var(--oni-text-secondary);border-radius:var(--oni-radius-8);cursor:pointer;position:relative}
+.btn:hover{background:var(--oni-bg-subtle);color:var(--oni-text-primary)}
+.btn:focus-visible{outline:2px solid var(--oni-focus);outline-offset:1px}
+.btn[aria-pressed=true]{background:var(--oni-info-soft);color:var(--oni-action-default)}
+.btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.btn.danger:hover{background:#FDEEEB;color:var(--oni-error)}
+.zoom{display:inline-flex;align-items:center;height:var(--oni-control);border-radius:var(--oni-radius-8);
+  background:var(--oni-bg-subtle);padding:0 2px;gap:0}
+.zoom .btn{width:var(--oni-control-sm);height:var(--oni-control-sm)}
+.zoom output{min-width:44px;text-align:center;font:500 13px/1 "Noto Sans KR";color:var(--oni-text-primary);font-variant-numeric:tabular-nums}
+.dots{display:flex;gap:2px;padding:0 2px}
+.dot{width:var(--oni-control-sm);height:var(--oni-control-sm);border:0;background:transparent;display:grid;place-items:center;border-radius:50%;cursor:pointer}
+.dot i{width:16px;height:16px;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.dot[aria-checked=true]{box-shadow:0 0 0 2px var(--oni-bg-surface),0 0 0 4px var(--oni-focus)}
+.dot:focus-visible{outline:2px solid var(--oni-focus);outline-offset:2px}
+.tip{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;
+  background:var(--oni-text-primary);color:#fff;font-size:12px;line-height:18px;padding:3px 8px;border-radius:6px;
+  opacity:0;pointer-events:none;transition:opacity .12s;z-index:2}
+.btn:hover .tip{opacity:1}
+kbd{font:500 11px/1 "Noto Sans KR";background:rgba(255,255,255,.18);border-radius:4px;padding:2px 4px;margin-left:6px}
+
+/* 상태 변형 */
+.bar.mini{padding:4px;border-radius:999px}
+.bar.mini .btn{width:var(--oni-control-sm);height:var(--oni-control-sm);border-radius:50%}
+
+/* 시안 레이블 */
+.lbl{font:500 12px/18px "Noto Sans KR";color:var(--oni-text-muted);justify-self:start}
+
+/* 확대 HUD */
+.hud{display:inline-flex;align-items:center;gap:8px;background:rgba(41,41,39,.86);color:#fff;
+  padding:6px 12px;border-radius:999px;font:500 13px/1 "Noto Sans KR"}
+.hud b{color:#8BC1F5;font-weight:700}
+
+/* 포인터 강조 */
+.ptr-demo{position:relative;width:100%;height:220px;border-radius:8px;overflow:hidden;cursor:default;
+  background:var(--oni-bg-surface);border:1px solid var(--oni-border-default);
+  background-image:linear-gradient(var(--oni-bg-subtle) 1px,transparent 1px),linear-gradient(90deg,var(--oni-bg-subtle) 1px,transparent 1px);background-size:24px 24px}
+.ptr-hint{position:absolute;inset:0;display:grid;place-content:center;text-align:center;color:var(--oni-text-muted);pointer-events:none}
+.halo{--hc:35,131,226;--s:44px;position:absolute;left:0;top:0;width:var(--s);height:var(--s);margin:calc(var(--s)/-2) 0 0 calc(var(--s)/-2);
+  border-radius:50%;background:rgba(var(--hc),.18);border:1.5px solid rgba(var(--hc),.9);pointer-events:none;
+  transition:transform .12s ease-out,background .12s;opacity:0}
+.halo.on{opacity:1}.halo.down{background:rgba(var(--hc),.35)}
+.ripple{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;
+  border:2.5px solid rgb(var(--rc));pointer-events:none;animation:rip .45s ease-out forwards}
+@keyframes rip{from{transform:scale(1);opacity:.8}to{transform:scale(3);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ripple{animation-duration:.01s}}
+.opt{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--oni-text-secondary);cursor:pointer}
+.opt input[type=checkbox]{accent-color:var(--oni-focus);width:16px;height:16px}
+.opt input[type=range]{accent-color:var(--oni-focus);width:90px}
+
+/* 토큰 시트 */
+.sw{display:flex;flex-wrap:wrap;gap:8px}
+.sw div{width:112px;border:1px solid var(--oni-border-default);border-radius:8px;overflow:hidden;background:var(--oni-bg-surface);font-size:12px;line-height:18px}
+.sw i{display:block;height:36px;border-bottom:1px solid var(--oni-border-default)}
+.sw span{display:block;padding:6px 8px;color:var(--oni-text-secondary)}
+.sw b{display:block;color:var(--oni-text-primary);font-weight:500}
+ul{margin:0;padding-left:18px;color:var(--oni-text-secondary)}
+li{margin:2px 0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{border-bottom:1px solid var(--oni-border-default);padding:8px;text-align:left;vertical-align:top}
+th{color:var(--oni-text-muted);font-weight:500;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>Oni Zoom · 디자인 방향 v0.1</h1>
+<p class="cap">강의용 화면 확대·필기 도구 / Oni School 컴포넌트 v0.1 토큰 기준 · 화이톤(웜 오프화이트) + 노션 블루</p>
+
+<h2>1. 메인 툴바 (컴팩트)</h2>
+<p class="cap">높이 48px · 컨트롤 36px · 화면 위에 떠 있는 단일 줄 알약 툴바. 버튼에 마우스를 올리면 단축키 툴팁.</p>
+<div class="stage">
+  <span class="lbl">기본 · 펜 활성</span>
+  <div class="bar" id="main">
+    <svg class="brand" viewBox="0 0 22 22" aria-label="Oni Zoom"><rect width="22" height="22" rx="6" fill="#1B70C9"/><circle cx="10" cy="10" r="4.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M13.2 13.2 17 17" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+
+    <div class="zoom" role="group" aria-label="확대">
+      <button class="btn" id="zout" aria-label="축소"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg><span class="tip">축소<kbd>−</kbd></span></button>
+      <output id="zval">2.0×</output>
+      <button class="btn" id="zin" aria-label="확대"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg><span class="tip">확대<kbd>+</kbd></span></button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div role="group" aria-label="도구" style="display:flex;gap:2px" id="tools">
+      <button class="btn" data-tool="pen" aria-pressed="true" aria-label="펜"><svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/></svg><span class="tip">펜<kbd>P</kbd></span></button>
+      <button class="btn" data-tool="hl" aria-pressed="false" aria-label="형광펜"><svg viewBox="0 0 24 24"><path d="M9 14l6-6 3 3-6 6H9z"/><path d="M4 20h7"/></svg><span class="tip">형광펜<kbd>H</kbd></span></button>
+      <button class="btn" data-tool="eraser" aria-pressed="false" aria-label="지우개"><svg viewBox="0 0 24 24"><path d="M8 19h11M5.5 14.5l8-8a2 2 0 0 1 3 0l2 2a2 2 0 0 1 0 3L11 19H8l-2.5-2.5a2 2 0 0 1 0-2z"/></svg><span class="tip">지우개<kbd>E</kbd></span></button>
+      <button class="btn" data-tool="laser" aria-pressed="false" aria-label="레이저 포인터"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2"/></svg><span class="tip">포인터<kbd>L</kbd></span></button>
+    </div>
+
+    <button class="btn" id="ptrBtn" aria-pressed="true" aria-label="포인터 강조" style="margin-left:2px"><svg viewBox="0 0 24 24"><path d="m6 4 12 7-5.2 1.6L10.5 18z"/><path d="M19 4.5l1.2-1.2M20.5 8h1.5M16 3V1.5" /></svg><span class="tip">포인터 강조<kbd>M</kbd></span></button>
+
+    <div class="sep"></div>
+
+    <div class="dots" role="radiogroup" aria-label="색상" id="colors">
+      <button class="dot" role="radio" aria-checked="true"  style="--c:#292927" aria-label="검정"><i></i></button>
+      <button class="dot" role="radio" aria-checked="false" style="--c:#2383E2" aria-label="블루"><i></i></button>
+      <button class="dot" role="radio" aria-checked="false" style="--c:#C43F35" aria-label="레드"><i></i></button>
+      <button class="dot" role="radio" aria-checked="false" style="--c:#20AD96" aria-label="틸"><i></i></button>
+      <button class="dot" role="radio" aria-checked="false" style="--c:#EBA640" aria-label="앰버"><i></i></button>
+    </div>
+
+    <div class="sep"></div>
+
+    <button class="btn" aria-label="실행 취소"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 8h-3"/></svg><span class="tip">실행 취소<kbd>Ctrl Z</kbd></span></button>
+    <button class="btn danger" aria-label="모두 지우기"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg><span class="tip">모두 지우기<kbd>Del</kbd></span></button>
+    <div class="sep"></div>
+    <button class="btn" aria-label="접기" id="fold"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg><span class="tip">접기<kbd>Esc</kbd></span></button>
+  </div>
+
+  <span class="lbl">접힘 · 미니 (필기 중 화면을 가리지 않음)</span>
+  <div class="bar mini">
+    <svg class="brand" style="margin:0 2px 0 4px" viewBox="0 0 22 22"><rect width="22" height="22" rx="6" fill="#1B70C9"/><circle cx="10" cy="10" r="4.2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M13.2 13.2 17 17" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <button class="btn" aria-pressed="true" aria-label="펜"><svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/></svg></button>
+    <span class="hud" style="background:var(--oni-bg-subtle);color:var(--oni-text-primary);padding:4px 10px">2.0×</span>
+    <button class="btn" aria-label="펼치기"><svg viewBox="0 0 24 24"><path d="m7 14 5-5 5 5"/></svg></button>
+  </div>
+
+  <span class="lbl">확대 HUD (화면 하단 중앙, 1.5초 후 사라짐)</span>
+  <div class="hud">확대 <b>2.0×</b> · 휠로 조절 · 우클릭 드래그로 이동</div>
+</div>
+
+<h2>2. 마우스 포인터 강조</h2>
+<p class="cap">아래 영역 위에서 마우스를 움직이고 클릭해 보세요. 좌클릭=블루 파문, 우클릭=앰버 파문, 누르고 있으면 링이 줄어든 채 유지됩니다.</p>
+<div class="stage">
+  <div class="ptr-demo" id="demo">
+    <div class="ptr-hint">강의 화면 (예시)<br><small>여기서 움직이고 클릭</small></div>
+    <div class="halo" id="halo"></div>
+  </div>
+  <div class="bar" style="gap:12px;padding:10px 14px">
+    <label class="opt"><input type="checkbox" id="oHalo" checked> 포인터 후광</label>
+    <label class="opt"><input type="checkbox" id="oRip" checked> 클릭 파문</label>
+    <label class="opt"><input type="checkbox" id="oKey"> 키 입력 표시</label>
+    <span class="sep"></span>
+    <label class="opt">크기 <input type="range" id="oSize" min="28" max="80" value="44"></label>
+    <div class="dots" role="radiogroup" aria-label="후광 색상" id="hcolors">
+      <button class="dot" role="radio" aria-checked="true" style="--c:#2383E2" aria-label="블루"><i></i></button>
+      <button class="dot" role="radio" aria-checked="false" style="--c:#EBA640" aria-label="앰버"><i></i></button>
+      <button class="dot" role="radio" aria-checked="false" style="--c:#EF786C" aria-label="코랄"><i></i></button>
+    </div>
+  </div>
+</div>
+<table style="margin-top:16px">
+<tr><th style="width:140px">요소</th><th>스펙</th></tr>
+<tr><td>포인터 + 후광</td><td><b>실제 마우스 포인터는 항상 그대로 표시</b>(숨기거나 대체하지 않음). 그 주변에 지름 44px(28~80 조절) 원이 포인터 끝점을 중심으로 함께 이동 · 노션블루 18% 채움 + 1.5px 링. 필기·확대 중에도 유지.</td></tr>
+<tr><td>좌클릭 파문</td><td>블루 링이 지름 24→72px로 확장, 불투명도 .8→0, 450ms ease-out.</td></tr>
+<tr><td>우클릭 파문</td><td>앰버(#EBA640)로 같은 애니메이션 → 좌/우 구분 가능.</td></tr>
+<tr><td>누르는 중</td><td>후광이 .75배로 수축 + 채움 진하게(35%), 뗄 때 파문 발생. 필기(드래그) 중에도 포인터는 유지하고 후광은 펜 색 링으로 바뀜.</td></tr>
+<tr><td>접근성</td><td>색에만 의존하지 않도록 링 두께·크기 변화도 함께 사용. 설정에서 "움직임 줄이기" 시 파문 대신 링 깜빡임 1회.</td></tr>
+<tr><td>구현 주의</td><td>오버레이 창이 클릭을 가로채면 안 됨 → 창을 click-through(WS_EX_TRANSPARENT)로 두고, 마우스 위치/클릭은 전역 후크(WH_MOUSE_LL)로 받아 후광·파문만 그림. 시스템 커서는 건드리지 않으므로 포인터가 사라질 일이 없음. 화면 확대 중에는 캡처 이미지에 커서가 안 찍히므로, 확대 화면 위에 실제 커서 모양(GetCursorInfo)을 직접 그려 줌. 필기 모드일 때만 입력을 오버레이가 받음.</td></tr>
+</table>
+
+<h2>3. 디자인 원칙</h2>
+<table>
+<tr><th style="width:140px">영역</th><th>결정</th></tr>
+<tr><td>톤</td><td>화이톤 = Oni <b>bg/canvas #FAFAF9 · surface #FFF · subtle #F3F3F1</b>. 순백/순흑 대신 웜 그레이 텍스트 <b>#292927</b>. 툴바는 흰 surface + 1px <b>#DCDCD6</b> 테두리 + 옅은 그림자.</td></tr>
+<tr><td>노션 블루</td><td>활성 상태 = soft <b>#EAF3FD</b> 배경 + <b>#1B70C9</b> 아이콘, 포커스 링/선택 링 = <b>#2383E2</b>. 블루는 "지금 켜진 것" 한 곳에만 사용 → 눈에 띄는 포인트 유지.</td></tr>
+<tr><td>컴팩트</td><td>컨트롤 36px(Oni 기본) / 보조 28px · 간격 4/8 · 아이콘 18px 선형(1.7px) · 라벨 없이 아이콘만, 툴팁으로 설명.</td></tr>
+<tr><td>브랜드</td><td>Oni Class 블루(#007AFF 계열) 앱 아이콘 22px을 툴바 좌측 드래그 핸들로. 상태색(성공/경고/오류)은 브랜드색과 분리.</td></tr>
+<tr><td>필기 색</td><td>검정 · 블루 · 레드 · 틸 · 앰버 5색 (Oni status 토큰 재사용). 칠판/PPT 위 가독성 위해 펜은 진한 색, 형광펜은 accent 색 35% 투명도.</td></tr>
+<tr><td>타이포</td><td>Noto Sans KR (Figma 기준) → 앱에서는 Pretendard 대응 검토. 본문 14/22, 캡션 12/18.</td></tr>
+<tr><td>모션</td><td>120ms ease-out 이하. 접기/펼치기, 툴팁만. 필기 지연을 만드는 애니메이션 금지.</td></tr>
+</table>
+
+<h2>4. 토큰</h2>
+<div class="sw">
+  <div><i style="background:#FAFAF9"></i><span><b>canvas</b>#FAFAF9</span></div>
+  <div><i style="background:#FFFFFF"></i><span><b>surface</b>#FFFFFF</span></div>
+  <div><i style="background:#F3F3F1"></i><span><b>subtle</b>#F3F3F1</span></div>
+  <div><i style="background:#DCDCD6"></i><span><b>border</b>#DCDCD6</span></div>
+  <div><i style="background:#292927"></i><span><b>text/primary</b>#292927</span></div>
+  <div><i style="background:#71716B"></i><span><b>text/muted</b>#71716B</span></div>
+  <div><i style="background:#1B70C9"></i><span><b>action</b>#1B70C9</span></div>
+  <div><i style="background:#2383E2"></i><span><b>focus · 노션블루</b>#2383E2</span></div>
+  <div><i style="background:#EAF3FD"></i><span><b>info/soft</b>#EAF3FD</span></div>
+</div>
+
+<h2>5. 기술 스택 제안</h2>
+<ul>
+  <li>현재 코드(<code>crates/screen-probe</code>)는 좌표 엔진(Viewport/Zoom, 음수 좌표 모니터 대응)만 있고 UI가 없음 → 엔진은 유지.</li>
+  <li>UI는 <b>Tauri 2</b>(투명 always-on-top 오버레이 창 + 웹 UI)로 위 시안을 그대로 구현. 필기는 Canvas 2D, 확대는 Rust 쪽 화면 캡처(Windows Graphics Capture)를 오버레이에 표시.</li>
+</ul>
+</main>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+let z=2;const out=$('#zval');
+const setZ=v=>{z=Math.min(4,Math.max(1,Math.round(v*4)/4));out.textContent=z.toFixed(1)+'×'};
+$('#zin').onclick=()=>setZ(z+.25);$('#zout').onclick=()=>setZ(z-.25);
+$$('#tools .btn').forEach(b=>b.onclick=()=>{$$('#tools .btn').forEach(x=>x.setAttribute('aria-pressed',x===b));});
+$('#ptrBtn').onclick=e=>{const b=e.currentTarget;b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true')};
+/* 포인터 강조 데모 */
+(()=>{const d=$('#demo'),h=$('#halo');let rc='35,131,226';
+  const set=(x,y)=>{h.style.transform=`translate(${x}px,${y}px)`+(h.classList.contains('down')?' scale(.75)':'')};
+  const pos=e=>{const r=d.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+  let last=[0,0];
+  d.addEventListener('pointermove',e=>{last=pos(e);h.classList.toggle('on',$('#oHalo').checked);set(...last)});
+  d.addEventListener('pointerleave',()=>h.classList.remove('on'));
+  d.addEventListener('contextmenu',e=>e.preventDefault());
+  d.addEventListener('pointerdown',e=>{last=pos(e);h.classList.add('down');set(...last);
+    if(!$('#oRip').checked)return;rc=e.button===2?'235,166,64':'35,131,226';
+    const r=document.createElement('i');r.className='ripple';r.style.cssText=`left:${last[0]}px;top:${last[1]}px;--rc:${rc}`;d.appendChild(r);setTimeout(()=>r.remove(),500)});
+  addEventListener('pointerup',()=>{h.classList.remove('down');set(...last)});
+  $('#oSize').oninput=e=>h.style.setProperty('--s',e.target.value+'px');
+  $$('#hcolors .dot').forEach((b,i)=>b.onclick=()=>{$$('#hcolors .dot').forEach(x=>x.setAttribute('aria-checked',x===b));h.style.setProperty('--hc',['35,131,226','235,166,64','239,120,108'][i])});
+})();
+$$('#colors .dot').forEach(d=>d.onclick=()=>$$('#colors .dot').forEach(x=>x.setAttribute('aria-checked',x===d)));
+</script>
+</body>
+</html>

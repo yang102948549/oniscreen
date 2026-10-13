@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>OniScreen Overlay</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { position: fixed; inset: 0; user-select: none; -webkit-user-select: none; }
+  #ink { position: absolute; left: 0; top: 0; touch-action: none; }
+
+  /* 포인터 후광: 바깥 #halo는 위치(translate)만, 안쪽 i가 모양/크기 변화를 맡는다(둘을 섞으면 클릭 때 튀는 현상 발생) */
+  #halo {
+    --hc: 35,131,226; --s: 44px; --ho: 1;
+    position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none;
+    opacity: 0; transition: opacity .1s;
+  }
+  #halo.on { opacity: 1; }
+  #halo i {
+    position: absolute; left: calc(var(--s) / -2); top: calc(var(--s) / -2); width: var(--s); height: var(--s);
+    border-radius: 50%; box-sizing: border-box; transform-origin: 50% 50%;
+    background: rgba(var(--hc), var(--ho)); /* 투명도 100% = 원색, 테두리 없음 */
+    transition: background .12s, transform .12s;
+  }
+  #halo.down i { transform: scale(.75); }
+
+  /* 텍스트 입력 상자 */
+  #tbox {
+    position: absolute; display: none; min-width: 2ch; max-width: 80vw; padding: 0; margin: 0;
+    font-family: "Noto Sans KR", "Malgun Gothic", sans-serif; font-weight: 500; line-height: 1.25;
+    white-space: pre; outline: 1.5px dashed rgba(35, 131, 226, .8); outline-offset: 3px;
+    background: transparent; user-select: text; -webkit-user-select: text; caret-color: currentColor;
+  }
+
+  /* 토스트·펜 굵기 표시: 툴바와 같은 Oni 토큰(표면·테두리·그림자·12px 모서리) */
+  :root { --surface: #fff; --border: #DCDCD6; --text: #292927; --focus: #2383E2; }
+  #toast {
+    position: absolute; left: 50%; top: 28px; transform: translate(-50%, -8px); max-width: 70vw;
+    padding: 8px 14px; border-radius: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(41,41,39,.06), 0 6px 20px rgba(41,41,39,.10);
+    font: 500 13px/20px "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+    opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+  #penhud { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; opacity: 0; transition: opacity .15s; }
+  #penhud.on { opacity: 1; }
+  #penhud i {
+    --d: 4px; position: absolute; left: calc(var(--d) / -2); top: calc(var(--d) / -2); width: var(--d); height: var(--d);
+    border-radius: 50%; border: 1.5px solid var(--focus); background: rgba(35,131,226,.15); box-sizing: content-box;
+  }
+  @media (prefers-color-scheme: dark) { :root { --surface: #2A2A28; --border: #4A4A46; --text: #F3F3F1; } }
+
+  .ripple {
+    position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; box-sizing: border-box;
+    border: 2.5px solid rgb(var(--rc)); pointer-events: none; animation: rip .45s ease-out forwards;
+  }
+  .ripple.calm { animation: flash .3s ease-out forwards; }
+  @keyframes rip { from { transform: scale(1); opacity: .85; } to { transform: scale(3); opacity: 0; } }
+  @keyframes flash { from { opacity: .8; } to { opacity: 0; } }
+</style>
+</head>
+<body>
+<canvas id="ink"></canvas>
+<div id="halo"><i></i></div>
+<div id="penhud"><i></i></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="tbox" contenteditable="plaintext-only" spellcheck="false"></div>
+<script src="shared.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>

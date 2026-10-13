@@ -1,0 +1,11 @@
+[workspace]
+# crates/screen-probe 는 Cargo.toml 이 없어 워크스페이스 전체를 깨뜨리고 있었으므로 제외한다.
+members = ["src-tauri"]
+resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"

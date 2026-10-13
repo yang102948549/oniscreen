@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Screen Probe — 확대·입력 검증 화면</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px; background: #f4f5f7; color: #202939; font: 18px/1.6 system-ui,sans-serif; }
+  main { max-width: 1000px; margin: auto; }
+  h1 { margin-bottom: 4px; font-size: 32px; } h2 { font-size: 21px; }
+  .intro { color: #627083; } section { margin: 24px 0; padding: 28px; background: white; border: 1px solid #dce1e8; border-radius: 18px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  button { font: inherit; color: white; background: #2563eb; border: 0; border-radius: 9px; padding: 12px 24px; cursor: pointer; }
+  button:active { background: #163da0; } button:focus-visible { outline: 4px solid #ffb43c; }
+  .track { overflow: hidden; height: 36px; border-radius: 6px; background: #eaf0fa; position: relative; }
+  .bar { position: absolute; width: 15%; height: 100%; background: #3475eb; animation: move 3s linear infinite alternate; }
+  @keyframes move { from { left: 0; } to { left: 85%; } }
+  textarea { width: 100%; padding: 16px; font: 22px/1.6 system-ui,sans-serif; border: 1px solid #b7c3d2; border-radius: 8px; }
+  #drag-area { height: 210px; position: relative; border: 1px dashed #a1b1c8; background: repeating-linear-gradient(0deg,transparent 0 19px,#edf0f5 19px 20px); }
+  #drag { position: absolute; left: 15px; top: 15px; width: 130px; height: 65px; border: 0; border-radius: 12px; background: #ffcf69; color: #412e07; font: inherit; cursor: grab; touch-action: none; user-select: none; }
+  .fine { background: repeating-linear-gradient(90deg,#111 0 1px,white 1px 2px); height: 30px; margin-bottom: 12px; }
+  output { font-variant-numeric: tabular-nums; } footer { margin: 80px 0; color: #627083; }
+</style>
+<main>
+  <h1>확대·입력 검증 화면</h1>
+  <p class="intro">화면 1에 이 페이지를 놓고 모니터 전체를 공유하세요. 이 페이지는 네트워크 요청이나 입력 내용 저장을 하지 않습니다.</p>
+  <section><h2>01 · 라이브 / 정지 확인</h2><div class="track"><div class="bar"></div></div><p>라이브 줌에서는 막대가 움직이고, 일반 줌에서는 멈춰야 합니다.</p></section>
+  <section><h2>02 · 확대된 위치 클릭</h2><div class="row"><button id="left">왼쪽 버튼</button><button id="right">오른쪽 버튼</button><output id="count" aria-live="polite">왼쪽 0회 · 오른쪽 0회</output></div><p>보이는 버튼을 눌렀을 때 해당 카운터만 1씩 증가해야 합니다.</p></section>
+  <section><h2>03 · 드래그 유지</h2><div id="drag-area"><button id="drag">드래그하세요</button></div><output id="drag-status">상자 안에서 사각형을 움직이세요.</output></section>
+  <section><h2>04 · 한글 입력과 포커스</h2><textarea rows="4" aria-label="한글 조합 입력 시험" placeholder="확대 상태에서 클릭한 뒤 ‘화면 확대와 한글 입력’을 입력하세요."></textarea><p>한글 조합·공백·줄바꿈·선택·백스페이스를 시험하세요. 현재 앱 자체의 텍스트 편집 기능이 아니라 원래 앱 입력 전달을 검증합니다.</p></section>
+  <section><h2>05 · 화질과 스크롤</h2><div class="fine"></div><p style="font-size:12px">12px: 가나다라마바사 ABCDEFG 0123456789</p><p style="font-size:18px">18px: 가나다라마바사 ABCDEFG 0123456789</p><p style="font-size:28px">28px: 가나다라마바사 ABCDEFG 0123456789</p><p>펜으로 표시한 뒤 이 페이지를 스크롤하세요. 라이브 필기는 화면 위치에 남아야 합니다.</p></section>
+  <footer>비상 해제: <strong>Ctrl + 0</strong><br>시험 후 Zoom·Meet 수신 화면 결과를 각각 기록하세요.</footer>
+</main>
+<script>
+  const counts = {left:0,right:0};
+  for (const id of ['left','right']) document.getElementById(id).addEventListener('click', () => {
+    counts[id]++; document.getElementById('count').textContent = `왼쪽 ${counts.left}회 · 오른쪽 ${counts.right}회`;
+  });
+  const drag = document.getElementById('drag');
+  const area = document.getElementById('drag-area');
+  let anchor = null;
+  drag.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    anchor = {x:e.clientX-drag.offsetLeft,y:e.clientY-drag.offsetTop};
+    drag.setPointerCapture(e.pointerId);
+  });
+  drag.addEventListener('pointermove', e => {
+    if (!anchor) return;
+    const x = Math.max(0,Math.min(area.clientWidth-drag.offsetWidth,e.clientX-anchor.x));
+    const y = Math.max(0,Math.min(area.clientHeight-drag.offsetHeight,e.clientY-anchor.y));
+    drag.style.left = `${x}px`; drag.style.top = `${y}px`;
+    document.getElementById('drag-status').textContent = `드래그 중: (${Math.round(x)}, ${Math.round(y)})`;
+  });
+  for (const name of ['pointerup','pointercancel','lostpointercapture']) drag.addEventListener(name, () => {
+    if (anchor) document.getElementById('drag-status').textContent += ' — 해제됨';
+    anchor = null;
+  });
+</script>
+</html>
