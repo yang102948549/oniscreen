@@ -30,6 +30,10 @@ pub fn single_instance() -> Result<Option<AppInstance>, std::io::Error> {
 /// 로컬 시각 (연, 월, 일, 시, 분, 초) — 파일 이름용.
 
 
+pub fn space_down() -> bool {
+    unsafe { (GetAsyncKeyState(0x20) as u16 & 0x8000) != 0 }
+}
+
 pub fn cursor_pos() -> (i32, i32) {
     let mut p = POINT { x: 0, y: 0 };
     unsafe { GetCursorPos(&mut p) };

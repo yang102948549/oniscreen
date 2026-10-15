@@ -86,8 +86,7 @@
   <img class="brand keep" src="assets/oni-screen.svg" width="22" height="22" alt="OniScreen" title="메뉴바 이동">
 
   <div class="zoom" role="group" aria-label="확대">
-    <button class="btn" id="zoomFixed" aria-label="일반 줌" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5M7 10h6M10 7v6"/></svg><span class="tip">일반 줌 · 위치 고정</span></button>
-    <button class="btn" id="zoomLive" aria-label="라이브 줌" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5"/><rect x="0" y="18" width="14" height="6" rx="2" style="fill:var(--oni-focus);stroke:none"/><text x="7" y="22.6" text-anchor="middle" style="font:700 4.8px Arial,sans-serif;fill:white;stroke:none">LIVE</text></svg><span class="tip">라이브 줌 · 모드 전환<kbd>Ctrl Shift 1</kbd></span></button>
+    <button class="btn" id="zoomFixed" aria-label="일반 줌" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5M7 10h6M10 7v6"/></svg><span class="tip">줌 · Space를 누르는 동안 이동</span></button>
     <details class="zoom-menu"><summary aria-label="배율 설정" title="배율 설정"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h8M6 8v8M14 12h8"/></svg></summary><div class="zoom-options" role="group" aria-label="확대 배율">
       <input id="zoomRange" type="range" min="1.25" max="8" step="0.25" aria-label="확대 배율"><output id="zoomValue" for="zoomRange">2×</output>
     </div></details>

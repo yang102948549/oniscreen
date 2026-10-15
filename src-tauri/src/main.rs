@@ -40,14 +40,13 @@ enum MagCmd {
     Wheel { dir: i32, ladder: bool, step: f32 },
     Stop,
     Pan { dx: f32, dy: f32 },
-    ViewHold(bool),
+    Follow(bool),
     /// 필기 중 화면 고정. `hold`면 마우스 왼쪽 버튼을 누르고 있는 동안만 고정(그 외에는 라이브로 따라간다).
     Freeze { on: bool, hold: bool },
 }
 
 struct AppState {
     wheel_ladder: AtomicBool,
-    live_zoom: AtomicBool,
     wheel_step: AtomicU32,
     /// 사용자가 지정한 전역 단축키(등록된 조합) — 다시 지정할 때 먼저 해제한다
     custom_keys: Mutex<Vec<String>>,
@@ -65,7 +64,6 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             wheel_ladder: AtomicBool::new(false),
-            live_zoom: AtomicBool::new(false),
             wheel_step: AtomicU32::new(0.25f32.to_bits()),
             custom_keys: Mutex::new(vec![]),
             mons: Mutex::new(vec![]),
@@ -194,7 +192,7 @@ fn spawn_magnifier(app: AppHandle) {
         let mut frames = 0u32;
         let mut last_move = std::time::Instant::now();
         let mut reported: Option<(bool, f32, bool, bool)> = None;
-        let mut view_held = false;
+        let mut following = false;
         // Alt+휠로 확대/축소(수신 전용 Raw Input). 실패해도 다른 기능에는 영향이 없다.
         let wheel_ok = win::create_wheel_sink();
         if !wheel_ok {
@@ -255,7 +253,7 @@ fn spawn_magnifier(app: AppHandle) {
                             anim.start(1.0, z, now, zoom_anim::duration_ms(1.0, z, true));
                             za_prev = 1.0;
                             off = (0, 0);
-                            view_held = false;
+                            following = false;
                         }
                     }
                     MagCmd::Set(nz) => {
@@ -303,9 +301,9 @@ fn spawn_magnifier(app: AppHandle) {
                         }
                     }
                     MagCmd::Stop => stop = true,
-                    MagCmd::ViewHold(on) => view_held = on && app.state::<AppState>().live_zoom.load(Ordering::Relaxed),
+                    MagCmd::Follow(on) => following = on && host.is_some() && !closing,
                     MagCmd::Pan { dx, dy } => {
-                        if host.is_some() && !app.state::<AppState>().live_zoom.load(Ordering::Relaxed) && !closing && !(frozen && (!hold || win::buttons().0)) {
+                        if host.is_some() && !following && !closing && !(frozen && (!hold || win::buttons().0)) {
                             let scale = za_prev.max(1.0);
                             off.0 -= (dx / scale).round() as i32;
                             off.1 -= (dy / scale).round() as i32;
@@ -346,9 +344,11 @@ fn spawn_magnifier(app: AppHandle) {
                 let za = anim.sample(now).max(1.0);
                 let local = ((cur.0 - mon.0) as f32, (cur.1 - mon.1) as f32);
                 // Live mode maps the source point under the pointer to that same display position.
-                let live = app.state::<AppState>().live_zoom.load(Ordering::Relaxed);
-                let held = live && view_held;
-                let still = held || (frozen && (!hold || win::buttons().0));
+                // Key-up may be lost when focus changes: never follow after Space is released.
+                if following && !win::space_down() { following = false; }
+                let live = following;
+                let held = false;
+                let still = frozen && (!hold || win::buttons().0);
                 let on_screen = cur.0 >= mon.0 && cur.0 < mon.0 + mon.2 && cur.1 >= mon.1 && cur.1 < mon.1 + mon.3;
                 if live && !still && !closing && on_screen && !over_toolbar(&app, cur.0, cur.1) {
                     off = follow_offset((mon.2, mon.3), local, za);
@@ -479,7 +479,7 @@ fn zoom_pan(app: AppHandle, dx: f32, dy: f32) {
 }
 
 #[tauri::command]
-fn zoom_hold(app: AppHandle, on: bool) { send_mag(&app, MagCmd::ViewHold(on)); }
+fn zoom_follow(app: AppHandle, on: bool) { send_mag(&app, MagCmd::Follow(on)); }
 
 #[tauri::command]
 fn zoom_exit(app: AppHandle) {
@@ -567,9 +567,8 @@ fn set_zoom_target(state: tauri::State<'_, AppState>, index: i32) {
 
 /// 확대 휠 설정. 고정 키는 포커스를 가진 오버레이에서 처리한다.
 #[tauri::command]
-fn set_zoom_prefs(app: AppHandle, ladder: bool, step: f32, live: bool) {
+fn set_zoom_prefs(app: AppHandle, ladder: bool, step: f32) {
     let state = app.state::<AppState>();
-    if state.live_zoom.swap(live, Ordering::Relaxed) != live { send_mag(&app, MagCmd::ViewHold(false)); }
     state.wheel_ladder.store(ladder, Ordering::Relaxed);
     state.wheel_step.store(step.clamp(0.1, 2.0).to_bits(), Ordering::Relaxed);
 }
@@ -809,7 +808,7 @@ fn main() {
             zoom_exit,
             zoom_freeze,
             zoom_pan,
-            zoom_hold,
+            zoom_follow,
             resize_toolbar,
             open_settings,
             quit

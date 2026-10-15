@@ -73,11 +73,9 @@
   <section>
     <h2>확대</h2>
     <div class="card">
-      <div class="row"><label for="zoomMode">확대 방식</label><select id="zoomMode"><option value="live">라이브 줌</option><option value="fixed">줌 (위치 고정)</option></select></div>
       <div class="row"><label for="zdef">기본 배율</label><input type="range" id="zdef" min="1.25" max="8" step="0.25"><span class="val" id="zdefV"></span></div>
       <div class="row"><label for="zstep">배율 단계</label><input type="range" id="zstep" min="0.25" max="1" step="0.25"><span class="val" id="zstepV"></span></div>
       <div class="row"><label for="zladder">휠을 2배씩</label><input type="checkbox" id="zladder"></div>
-      <div class="row"><label for="holdKey">라이브 줌 고정 키</label><select id="holdKey"><option value="space">Space</option><option value="shift">Shift</option><option value="ctrl">Ctrl</option><option value="f8">F8</option><option value="none">없음</option></select></div>
       <div class="row"><label for="drawView">필기 중 화면</label><select id="drawView"><option value="stroke">필기 중 이동 잠금</option><option value="live">이동 허용</option><option value="always">도구 사용 중 이동 잠금</option></select></div>
       <div class="row"><label for="ztarget">확대할 화면</label><select id="ztarget"></select></div>
     </div>
@@ -103,7 +101,7 @@
   <h2 id="usageTitle">사용 안내</h2>
   <ul>
     <li><strong>일반 줌</strong> · Ctrl+1로 시작합니다. 가운데 버튼을 누르고 드래그하면 확대 영역이 이동합니다.</li>
-    <li><strong>라이브 줌</strong> · 마우스를 따라 이동합니다. Ctrl+Shift+1로 일반 줌과 전환하고, 고정 키로 이동을 잠급니다.</li>
+    <li><strong>화면 이동</strong> · 확대 중 Space를 누르는 동안만 마우스를 따라 이동합니다. Space를 놓으면 그 위치에 고정됩니다. 텍스트 입력 중에는 띄어쓰기가 됩니다.</li>
     <li><strong>배율 조절</strong> · 메뉴의 +/− 버튼, Ctrl+↑/↓ 또는 Alt+휠을 사용합니다.</li>
     <li><strong>필기와 도형</strong> · 드래그하면서 Shift는 선, Ctrl은 사각형, Tab은 타원, Ctrl+Shift는 화살표를 그립니다.</li>
     <li><strong>텍스트</strong> · Enter 또는 바깥 클릭으로 확정하고, Shift+Enter로 줄을 바꿉니다. 오른쪽 위 X로 삭제하고 아래 모서리로 크기를 조절합니다.</li>

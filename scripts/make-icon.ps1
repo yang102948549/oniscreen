@@ -20,19 +20,21 @@ $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 $g.Clear([System.Drawing.Color]::Transparent)
 
-# Minimal screen and pen mark, matching ui/assets/oni-screen.svg.
+# Transparent chalkboard and magnifier, matching ui/assets/oni-screen.svg.
 $g.ScaleTransform([single]($size / 24.0), [single]($size / 24.0))
-$blueBrush = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#2383E2'))
+$boardBrush = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#292927'))
 $whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-$g.FillPath($blueBrush, (New-RoundRect 0 0 24 24 5.5))
-$line = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [single]1.5)
-$line.StartCap = $line.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$g.DrawPath($line, (New-RoundRect 4.5 5.5 15 11 1.5))
-$g.DrawLine($line, [single]12, [single]16.5, [single]12, [single]19)
-$g.DrawLine($line, [single]9, [single]19, [single]15, [single]19)
-$points = [System.Drawing.PointF[]]@([System.Drawing.PointF]::new(9,13.5), [System.Drawing.PointF]::new(9.7,10.8), [System.Drawing.PointF]::new(14,6.5), [System.Drawing.PointF]::new(16,8.5), [System.Drawing.PointF]::new(11.7,12.8))
-$g.FillPolygon($whiteBrush, $points)
-$blueBrush.Dispose(); $whiteBrush.Dispose(); $line.Dispose()
+$boardLine = New-Object System.Drawing.Pen($boardBrush, [single]1.6)
+$boardLine.StartCap = $boardLine.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+$blueLine = New-Object System.Drawing.Pen([System.Drawing.ColorTranslator]::FromHtml('#2383E2'), [single]2)
+$blueLine.StartCap = $blueLine.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+$g.FillPath($boardBrush, (New-RoundRect 2 3 17 12 1.5))
+$g.DrawLine($boardLine, [single]10.5, [single]15, [single]10.5, [single]19)
+$g.DrawLine($boardLine, [single]6, [single]19, [single]14, [single]19)
+$g.FillEllipse($whiteBrush, [single]11, [single]9, [single]8, [single]8)
+$g.DrawEllipse($blueLine, [single]11, [single]9, [single]8, [single]8)
+$g.DrawLine($blueLine, [single]18, [single]16, [single]22, [single]20)
+$boardBrush.Dispose(); $whiteBrush.Dispose(); $boardLine.Dispose(); $blueLine.Dispose()
 
 $g.Dispose()
 $out = Join-Path (Split-Path -Parent $PSScriptRoot) 'icon-source.png'

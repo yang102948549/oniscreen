@@ -205,6 +205,7 @@
   let editing = null; // { x, y } 원본 좌표
   async function openText(e) {
     commitText();
+    stopFollowing();
     const [x, y] = local(e);
     editing = { x, y, size: S.textSize, color: tool.color };
     textEditor.hidden = false; $('#textSizeMenu').open = false; $('#textFontSize').value = editing.size;
@@ -289,7 +290,7 @@
     textEditor.classList.toggle('actions-below', y < 40);
     tbox.style.maxWidth = `${Math.max(24, innerWidth - x - 4)}px`;
   }
-  let pan = null, held = false;
+  let pan = null, spaceFollowing = false;
 
   let lastPtr = { tab: false };
 
@@ -306,7 +307,7 @@
 
   cv.addEventListener('pointerdown', (e) => {
     const [x, y] = local(e);
-    if (e.button === 1 && view.active && S.zoomMode === 'fixed') { e.preventDefault(); commitText(); pan = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); return; }
+    if (e.button === 1 && view.active) { e.preventDefault(); commitText(); pan = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); return; }
     if (e.button === 2) { invoke('zoom_exit'); return; }
     if (e.button !== 0 || !frozen()) return;
     if (tool.id === 'text') { e.preventDefault(); openText(e); return; }
@@ -355,10 +356,10 @@
     const entering = mine && !view.active;
     const leaving = !mine && view.active;
     view.active = mine; view.z = mine ? p.ze : 1;
-    if (!mine) { view.ox = view.oy = 0; held = false; }
+    if (!mine) { view.ox = view.oy = 0; stopFollowing(); }
     syncInteractive();
     if (entering || leaving) invoke('focus_overlay', { index: m, on: mine || !!editing });
-    if (entering) toast(S.zoomMode === 'fixed' ? '줌 · 가운데 버튼 드래그로 이동 · Esc 종료' : '라이브 줌 · 마우스 추적 · 고정 키로 잠금 · Esc 종료');
+    if (entering) toast('줌 · Space를 누르는 동안 이동 · 놓으면 고정 · Esc 종료');
     positionText();
     dirty = true;
   });
@@ -409,18 +410,29 @@
   listen('toast', ({ payload }) => { if (payload.m === m) toast(payload.msg); });
 
   // ───── 키 입력 → 툴바로 전달 ─────
-  const holdCode = () => ({ space: 'Space', f8: 'F8', shift: 'ShiftLeft', ctrl: 'ControlLeft' }[S.holdKey]);
+  function stopFollowing() {
+    if (!spaceFollowing) return;
+    spaceFollowing = false;
+    invoke('zoom_follow', { on: false });
+  }
   addEventListener('keydown', (e) => {
     if (editing) return;
-    const code = e.code.replace('Right', 'Left');
-    if (view.active && S.zoomMode === 'live' && code === holdCode()) {
+    if (view.active && e.code === 'Space') {
       e.preventDefault(); e.stopPropagation();
-      if (!e.repeat) { held = !held; invoke('zoom_hold', { on: held }); toast(held ? '화면 이동 잠금' : S.zoomMode === 'fixed' ? '줌 · 가운데 버튼 드래그로 이동' : '라이브 줌 · 마우스 추적'); }
+      if (!e.repeat && !spaceFollowing && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        spaceFollowing = true;
+        invoke('zoom_follow', { on: true });
+      }
       return;
     }
-    if (view.active && e.code === 'Space') { e.preventDefault(); return; }
     emit('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey });
   });
+  addEventListener('keyup', e => {
+    if (e.code !== 'Space') return;
+    if (view.active && !editing) { e.preventDefault(); e.stopPropagation(); }
+    stopFollowing();
+  });
+  addEventListener('blur', stopFollowing);
   cv.addEventListener('auxclick', e => e.preventDefault());
 
   // ───── 포인터 후광 + 클릭 파문 ─────
@@ -461,8 +473,7 @@
   });
 
   addEventListener('storage', () => {
-    const mode = S.zoomMode; S = loadSettings();
-    if (mode !== S.zoomMode) { held = false; invoke('zoom_hold', { on: false }); }
+    S = loadSettings();
     applyHalo();
   });
   addEventListener('resize', fit);

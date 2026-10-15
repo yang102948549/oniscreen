@@ -72,7 +72,6 @@ Object.keys(KEY_LABELS).forEach((act) => {
 function paint() {
   $$('.kbtn', keysEl).forEach((b) => { b.classList.toggle('rec', capturing === b.dataset.act); b.textContent = capturing === b.dataset.act ? '키를 누르세요…' : keyLabel(S.keys[b.dataset.act]); });
   zt.value = String(S.zoomTarget);
-  $('#zoomMode').value = S.zoomMode;
   $$('.dot', tc).forEach((d, i) => d.setAttribute('aria-checked', String(PEN_COLORS[i].hex === S.textColor)));
   $('#hk').checked = S.hotkeys;
   $('#haloOn').checked = S.haloOn;
@@ -83,7 +82,7 @@ function paint() {
   $('#opac').value = S.haloOpacity; $('#opacV').textContent = `${S.haloOpacity}%`;
   $('#zdef').value = S.zoomDefault; $('#zdefV').textContent = `${S.zoomDefault}×`;
   $('#zladder').checked = !!S.zoomLadder;
-  $('#holdKey').value = S.holdKey; $('#drawView').value = S.drawView;
+  $('#drawView').value = S.drawView;
   $('#zstep').value = S.zoomStep; $('#zstepV').textContent = `${S.zoomStep}×`;
   $('#ts').value = S.textSize; $('#tsV').textContent = `${S.textSize}px`;
   $('#pw').value = S.penWidth; $('#pwV').textContent = `${S.penWidth}px`;
@@ -97,8 +96,6 @@ $('#reduce').onchange = (e) => set({ reduceMotion: e.target.checked });
 $('#size').oninput = (e) => set({ haloSize: +e.target.value });
 $('#opac').oninput = (e) => set({ haloOpacity: +e.target.value });
 $('#zdef').oninput = (e) => set({ zoomDefault: +e.target.value });
-$('#zoomMode').onchange = e => set({ zoomMode: e.target.value });
-$('#holdKey').onchange = (e) => set({ holdKey: e.target.value });
 $('#drawView').onchange = (e) => set({ drawView: e.target.value });
 $('#zladder').onchange = (e) => set({ zoomLadder: e.target.checked });
 $('#zstep').oninput = (e) => set({ zoomStep: +e.target.value });

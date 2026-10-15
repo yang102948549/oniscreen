@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 (async () => {
   const events = {}, calls = [], globals = {};
-  let frame; const drawn = []; let zoomMode = 'live';
+  let frame; const drawn = [];
   const ctx = new Proxy({}, { get: (o, k) => o[k] || (() => {}) });
   ctx.fillText = (text, x, y) => drawn.push({ text, x, y, font: ctx.font });
   const elements = {};
@@ -22,7 +22,7 @@ const vm = require('node:vm');
     invoke: async (name, args) => { calls.push([name, args]); return name === 'monitor_rect' ? { x: -1920, y: 0, w: 1920, h: 1080 } : undefined; },
     listen: (k, f) => { events[k] = f; }, emit() {},
     $: element, devicePixelRatio: 1.5, innerWidth: 1280,
-    loadSettings: () => ({ textSize: 28, holdKey: 'space', zoomMode, penWidth: 4, haloOn: false }),
+    loadSettings: () => ({ textSize: 28, penWidth: 4, haloOn: false }),
     saveSettings() {},
     PEN_COLORS: [{ hex: '#292927' }], MIN_PEN: 2, MAX_PEN: 40,
     hexToRgb: () => '0,0,0', RIPPLE_RIGHT: '',
@@ -40,18 +40,18 @@ const vm = require('node:vm');
   const key = { code: 'Space', key: ' ', repeat: false, preventDefault() { prevented++; }, stopPropagation() {} };
   globals.keydown(key); globals.keydown({ ...key, repeat: true });
   assert.equal(prevented, 2);
-  assert.equal(calls.filter(([n]) => n === 'zoom_hold').length, 1);
-  globals.keydown(key);
-  assert.equal(calls.filter(([n]) => n === 'zoom_hold').at(-1)[1].on, false);
+  assert.equal(calls.filter(([n]) => n === 'zoom_follow').length, 1);
+  globals.keyup(key);
+  assert.equal(calls.filter(([n]) => n === 'zoom_follow').at(-1)[1].on, false);
   events.state({ payload: { tool: 'text', color: '#292927' } });
   const click = { clientX: 300, clientY: 200, button: 0, preventDefault() {} };
   await element('#ink').handlers.pointerdown(click);
   await new Promise(setImmediate);
   assert.equal(element('#textEditor').style.left, '300px');
   assert.equal(element('#textEditor').style.top, '200px');
-  const previous = calls.filter(([n]) => n === 'zoom_hold').length;
+  const previous = calls.filter(([n]) => n === 'zoom_follow').length;
   globals.keydown(key);
-  assert.equal(calls.filter(([n]) => n === 'zoom_hold').length, previous, 'Space must remain text while editing');
+  assert.equal(calls.filter(([n]) => n === 'zoom_follow').length, previous, 'Space must remain text while editing');
   const handle = element('#textResize');
   handle.handlers.pointerdown({ button: 0, pointerId: 2, clientX: 300, clientY: 200, preventDefault() {}, stopPropagation() {} });
   handle.handlers.pointermove({ clientX: 940, clientY: 560 });
@@ -73,15 +73,20 @@ const vm = require('node:vm');
   assert(drawn.at(-1).font.includes('33px'), 'committed font must preserve resized display size at 150% DPI and 2x zoom');
 
 
-  zoomMode = 'fixed'; globals.storage();
-  const holdCount = calls.filter(([n]) => n === 'zoom_hold').length;
   globals.keydown(key);
-  assert.equal(calls.filter(([n]) => n === 'zoom_hold').length, holdCount, 'fixed zoom must not toggle hold');
+  assert.equal(calls.filter(([n]) => n === 'zoom_follow').at(-1)[1].on, true);
+  globals.blur();
+  assert.equal(calls.filter(([n]) => n === 'zoom_follow').at(-1)[1].on, false, 'losing focus must stop tracking');
   element('#ink').handlers.pointerdown({ ...click, button: 1, pointerId: 1 });
   element('#ink').handlers.pointermove({ clientX: 320, clientY: 210 });
   const pan = calls.find(([n]) => n === 'zoom_pan')[1];
   assert.equal(pan.dx, 30); assert.equal(pan.dy, 15);
+  globals.keydown(key);
   events['zoom-changed']({ payload: { active: false, m: 0, ze: 1 } });
+  assert.equal(calls.filter(([n]) => n === 'zoom_follow').at(-1)[1].on, false, 'zoom exit must stop tracking');
+  const beforeIdleSpace = calls.length;
+  globals.keydown(key);
+  assert.equal(calls.length, beforeIdleSpace, 'Space outside zoom must not start tracking');
   assert(calls.some(([n, p]) => n === 'focus_overlay' && !p.on));
   events.state({ payload: { tool: null, board: null, color: '#292927' } });
   await new Promise(setImmediate);
@@ -101,5 +106,5 @@ const vm = require('node:vm');
   releaseInput();
   await new Promise(setImmediate);
   assert.equal(calls.filter(([n]) => n === 'set_interactive').at(-1)[1].on, false, 'rapid return to pointer must restore click-through');
-  console.log('Overlay checks passed: DPI coordinates, focus, Space toggle/repeat/text, pan, text resize/delete/commit.');
+  console.log('Overlay checks passed: DPI coordinates, focus, Space hold/release/repeat/blur/text, pan, text resize/delete/commit.');
 })().catch(e => { console.error(e); process.exitCode = 1; });
