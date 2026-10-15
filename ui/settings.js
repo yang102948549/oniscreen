@@ -110,13 +110,16 @@ $('#quit').onclick = () => invoke('quit');
 addEventListener('storage', () => { S = loadSettings(); paint(); });
 paint();
 
+T.app.getVersion().then(version => { $('#currentVersion').textContent = `현재 버전 ${version}`; }).catch(() => { $('#currentVersion').textContent = '버전 확인 불가'; });
+
 $('#checkUpdate').onclick = async () => {
   const button = $('#checkUpdate'), status = $('#updateStatus');
   button.disabled = true; $('#downloadUpdate').hidden = true;
   status.textContent = '최신 버전 확인 중…';
   try {
     const result = await invoke('check_update');
-    status.textContent = result.available ? `새 버전 ${result.latest} · 현재 ${result.current}` : `최신 버전입니다 · ${result.current}`;
+    status.textContent = result.available ? `새 버전 ${result.latest}을 받을 수 있습니다.` : '최신 버전입니다.';
+    $('#currentVersion').textContent = `현재 버전 ${result.current}`;
     $('#downloadUpdate').hidden = !result.available;
   } catch (error) { status.textContent = `확인하지 못했습니다 · ${error}`; }
   finally { button.disabled = false; }

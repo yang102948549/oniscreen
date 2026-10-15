@@ -42,6 +42,14 @@
   .header-actions { display: flex; gap: 10px; align-items: center; }
   #saveStatus { font-size: 12px; color: var(--oni-text-muted); }
   #save { color: var(--oni-action-default); }
+  .usage-guide ul { margin: 0; padding-left: 18px; color: var(--oni-text-secondary); font-size: 12px; line-height: 1.65; }
+  .usage-guide li { margin: 4px 0; }
+  .usage-guide strong { color: var(--oni-text-primary); font-weight: 500; }
+  footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--oni-border-default); }
+  .update-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--oni-text-secondary); }
+  #updateStatus { margin: 6px 0 0; font-size: 12px; line-height: 18px; color: var(--oni-text-muted); }
+  #updateStatus:empty { display: none; }
+  .copyright { display: block; margin-top: 12px; font-size: 10px; color: var(--oni-text-muted); }
   @media (max-width: 780px) { .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } #keys { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
 </head>
@@ -91,9 +99,25 @@
   <div class="card"><div id="keys"></div></div>
 </section>
 
-<p class="hint">단축키 칸을 누르고 새 조합(Ctrl/Alt/Shift 포함)을 누르세요 · Esc 취소 · ↺ 기본값. 확대 중에는 Ctrl+↑/↓, Alt+휠로도 확대·축소하고, 라이브 줌은 마우스를 따라 이동하고, 줌은 위치를 유지합니다. 줌에서는 가운데 버튼 드래그로 영역을 이동합니다. 라이브 줌에서만 고정 키로 추적을 잠그거나 해제합니다. Ctrl+1은 일반 줌, Ctrl+Shift+1은 두 모드 전환입니다. 텍스트 입력 중에는 띄어쓰기가 가능합니다.<br>그리는 동안: 드래그 + Shift 선 · Ctrl 사각형 · Tab 타원 · Ctrl+Shift 화살표 · Ctrl+휠 펜 굵기 · R G B O Y K W 색상.<br>확대할 화면이 "자동"이면 마지막으로 마우스를 두고 작업한 화면을 확대합니다.</p>
-
-<section class="wide"><h2>업데이트</h2><div class="card"><div class="row"><span id="updateStatus" role="status" aria-live="polite">GitHub 릴리스에서 최신 버전을 확인합니다.</span><button class="kbtn" id="checkUpdate">업데이트 확인</button><button class="kbtn" id="downloadUpdate" hidden>설치 파일 받기</button></div></div><p class="hint">다운로드한 설치 파일을 실행하면 업데이트됩니다. 기존 설정은 유지됩니다.</p></section>
+<section class="wide usage-guide" aria-labelledby="usageTitle">
+  <h2 id="usageTitle">사용 안내</h2>
+  <ul>
+    <li><strong>일반 줌</strong> · Ctrl+1로 시작합니다. 가운데 버튼을 누르고 드래그하면 확대 영역이 이동합니다.</li>
+    <li><strong>라이브 줌</strong> · 마우스를 따라 이동합니다. Ctrl+Shift+1로 일반 줌과 전환하고, 고정 키로 이동을 잠급니다.</li>
+    <li><strong>배율 조절</strong> · 메뉴의 +/− 버튼, Ctrl+↑/↓ 또는 Alt+휠을 사용합니다.</li>
+    <li><strong>필기와 도형</strong> · 드래그하면서 Shift는 선, Ctrl은 사각형, Tab은 타원, Ctrl+Shift는 화살표를 그립니다.</li>
+    <li><strong>텍스트</strong> · Enter 또는 바깥 클릭으로 확정하고, Shift+Enter로 줄을 바꿉니다. 오른쪽 위 X로 삭제하고 아래 모서리로 크기를 조절합니다.</li>
+    <li><strong>포인터</strong> · 포인터 버튼을 누르면 다른 앱을 조작할 수 있습니다. 리본에서 색상·투명도·크기와 클릭 링 색상을 바꿉니다.</li>
+    <li><strong>단축키 변경</strong> · 위의 키 칸을 누르고 새 조합을 입력합니다. Esc는 취소, ↺는 기본값 복원입니다.</li>
+    <li><strong>화면 공유</strong> · Google Meet에서 전체 화면 공유를 선택하면 확대·필기·포인터가 함께 보입니다.</li>
+    <li><strong>여러 모니터</strong> · 확대할 화면을 ‘자동’으로 두면 마지막으로 마우스를 두고 작업한 화면을 확대합니다.</li>
+  </ul>
+</section>
+<footer>
+  <div class="update-controls"><span id="currentVersion">현재 버전 확인 중…</span><button class="kbtn" id="checkUpdate">업데이트 확인</button><button class="kbtn" id="downloadUpdate" hidden>설치 파일 받기</button></div>
+  <p id="updateStatus" role="status" aria-live="polite"></p>
+  <small class="copyright">© Onischool by Oniaby</small>
+</footer>
 <script src="shared.js"></script>
 <script src="settings.js"></script>
 </body>

@@ -630,6 +630,12 @@ fn raise_toolbar_cmd(app: AppHandle) {
 #[tauri::command]
 fn resize_toolbar(app: AppHandle, width: f64, height: f64) {
     if let Some(w) = app.get_webview_window(TOOLBAR) {
+        if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 { return; }
+        // Ignore repeated logical sizes, including DPI rounding after moving monitors.
+        if let (Ok(size), Ok(scale)) = (w.inner_size(), w.scale_factor()) {
+            let desired: PhysicalSize<u32> = LogicalSize::new(width, height).to_physical(scale);
+            if size == desired { return; }
+        }
         let _ = w.set_size(LogicalSize::new(width, height));
     }
 }
@@ -748,9 +754,6 @@ fn spawn_pointer_feed(app: AppHandle) {
         let mut rest: (usize, std::time::Instant) = (NONE, std::time::Instant::now());
         loop {
             tick = tick.wrapping_add(1);
-            if tick % 25 == 0 {
-                raise_toolbar(&app);
-            }
             let (x, y) = win::cursor_pos();
             let (l, r) = win::buttons();
             let tab = win::modifier_keys().0;
