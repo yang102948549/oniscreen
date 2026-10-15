@@ -54,3 +54,6 @@ npm run build    # target/release/bundle/nsis 에 설치 파일 생성
 ### 업데이트
 설정 → 업데이트 확인에서 GitHub 최신 정식 릴리스와 현재 버전을 비교합니다. 새 버전이 있으면 **설치 파일 받기**로 기본 브라우저에서 Windows 설치 파일을 다운로드하고 실행합니다. 앱 내부 자동 설치 방식은 아닙니다.
 배포 시 package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json 버전을 동일하게 올린 뒤 해당 버전의 v 태그를 푸시합니다. 기존 release 워크플로가 `*-setup.exe`를 GitHub Releases에 게시합니다. 공개 릴리스가 없거나 네트워크 오류가 나면 설정창에 이유를 표시합니다.
+
+### 화면 공유
+Google Meet 등에서는 **전체 화면 공유**를 선택하세요. v0.2.1부터 확대·필기·포인터 표시가 공유 화면에 포함됩니다. 내부 확대는 Windows Magnification API의 창 필터로 자기 창을 제외하며, 메뉴바와 설정창은 공유 화면에서 숨깁니다. 창 또는 탭만 공유하면 별도 오버레이는 포함되지 않을 수 있습니다.

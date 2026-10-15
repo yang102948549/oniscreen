@@ -40,7 +40,7 @@
   let dirty = true;
 
   // ───── 화면 스냅샷(스크린샷) ─────
-  // 오버레이/확대 창은 캡처에서 제외되므로 Rust가 확대 전 원본 화면을 돌려준다. 파일로 저장하지 않는다.
+  // Rust가 실제 표시된 확대·잉크·포인터를 포함한 화면을 돌려준다.
   async function grab() {
     const buf = await invoke('grab_screen', { index: m });
     const dv = new DataView(buf);
@@ -392,16 +392,8 @@
 
   // ───── 스크린샷 (확대·잉크·보드 포함, 화면에 보이는 그대로) ─────
   async function composeShot() {
-    const base = await grab();
-    const out = document.createElement('canvas'); out.width = W; out.height = H;
-    const g = out.getContext('2d');
-    const z = zf();
-    g.imageSmoothingQuality = 'high';
-    g.drawImage(base.raw, view.ox, view.oy, W / z, H / z, 0, 0, W, H);
-    drawBoard(g);
-    g.setTransform(z, 0, 0, z, -view.ox * z, -view.oy * z);
-    strokes.forEach((s) => drawStroke(g, s));
-    return out;
+    // The shared screen already contains zoom and ink: do not apply them twice.
+    return (await grab()).raw;
   }
   listen('shot', async ({ payload }) => {
     if (payload.m !== m) return;

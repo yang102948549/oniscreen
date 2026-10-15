@@ -415,7 +415,7 @@ fn set_passthrough(w: &WebviewWindow, passthrough: bool) {
     let _ = w.set_ignore_cursor_events(passthrough);
     if let Some(h) = hwnd_of(w) {
         win::style_tool_window(h, true); // overlays never take focus: the toolbar stays on top
-        win::exclude_from_capture(h);
+        win::allow_capture(h);
     }
 }
 
@@ -696,7 +696,7 @@ fn create_overlays(app: &AppHandle, mons: &[MonRect]) -> tauri::Result<()> {
         w.set_size(size)?;
         set_passthrough(&w, true);
         if let Some(h) = hwnd_of(&w) {
-            win::exclude_from_capture(h);
+            win::allow_capture(h);
         }
         w.show()?;
         set_passthrough(&w, true); // Showing the webview can rewrite extended window styles.

@@ -5,6 +5,7 @@ use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
+use windows_sys::Win32::UI::Magnification::*;
 
 pub struct AppInstance(windows_sys::Win32::Foundation::HANDLE);
 impl Drop for AppInstance {
@@ -114,19 +115,23 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// Exclude a window from screen capture, so the zoom loop can keep grabbing the desktop
-/// without our toolbar / ink / halo (or the zoom window itself) showing up in the frames.
+/// Hide only control windows (toolbar/settings) from external screen capture.
 pub fn exclude_from_capture(hwnd: isize) {
     unsafe {
         SetWindowDisplayAffinity(hwnd as HWND, 0x11); // WDA_EXCLUDEFROMCAPTURE
     }
 }
 
-/// Live zoom: a click-through topmost window covering one monitor. Each frame the visible part of
-/// that monitor is grabbed from the screen (GDI, physical pixels, no DPI virtualisation) and
-/// stretched into the window. Everything stays inside the one monitor, whatever the DPI mix.
+/// Presentation windows remain visible to Meet/OBS and other capture clients.
+pub fn allow_capture(hwnd: isize) {
+    unsafe { SetWindowDisplayAffinity(hwnd as HWND, 0); }
+}
+
+/// Windows magnifier excludes our windows only from its own source, not from screen sharing.
 pub struct ZoomHost {
     host: HWND,
+    magnifier: HWND,
+    excluded: std::cell::RefCell<Vec<HWND>>,
     screen: HDC,
     mem: HDC,
     bmp: HBITMAP,
@@ -135,48 +140,66 @@ pub struct ZoomHost {
     h: i32,
 }
 
+unsafe extern "system" fn collect_app_window(hwnd: HWND, data: isize) -> i32 {
+    let mut pid = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    if pid == std::process::id() {
+        (*(data as *mut Vec<HWND>)).push(hwnd);
+    }
+    1
+}
+
+fn update_zoom_filter(z: &ZoomHost) -> bool {
+    let mut windows: Vec<HWND> = Vec::new();
+    unsafe { EnumWindows(Some(collect_app_window), &mut windows as *mut _ as isize); }
+    windows.sort_unstable();
+    let mut previous = z.excluded.borrow_mut();
+    if *previous == windows { return true; }
+    let ok = unsafe { MagSetWindowFilterList(z.magnifier, MW_FILTERMODE_EXCLUDE, windows.len() as i32, windows.as_mut_ptr()) } != 0;
+    if ok { *previous = windows; }
+    ok
+}
+
 pub fn zoom_create(rect: (i32, i32, i32, i32)) -> Option<ZoomHost> {
     unsafe {
+        if MagInitialize() == 0 { return None; }
         let (x, y, w, h) = rect;
         let host = CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            wide("Static").as_ptr(),
-            wide("OniScreen View").as_ptr(),
-            WS_POPUP,
-            x,
-            y,
-            w,
-            h,
-            null_mut(),
-            null_mut(),
-            null_mut(),
-            null(),
+            wide("Static").as_ptr(), wide("OniScreen View").as_ptr(),
+            WS_POPUP | WS_CLIPCHILDREN, x, y, w, h,
+            null_mut(), null_mut(), null_mut(), null(),
         );
-        if host.is_null() {
-            return None;
-        }
+        if host.is_null() { MagUninitialize(); return None; }
         SetLayeredWindowAttributes(host, 0, 255, LWA_ALPHA);
-        exclude_from_capture(host as isize);
+        let magnifier = CreateWindowExW(0, WC_MAGNIFIER, wide("").as_ptr(),
+            WS_CHILD | WS_VISIBLE, 0, 0, w, h, host, null_mut(), null_mut(), null());
+        if magnifier.is_null() { DestroyWindow(host); MagUninitialize(); return None; }
         let screen = GetDC(null_mut());
         let mem = CreateCompatibleDC(screen);
         let bmp = CreateCompatibleBitmap(screen, w, h);
         let old = SelectObject(mem, bmp);
+        let z = ZoomHost { host, magnifier, excluded: std::cell::RefCell::new(Vec::new()), screen, mem, bmp, old, w, h };
+        if !update_zoom_filter(&z) { zoom_destroy(z); return None; }
+        let source = RECT { left: x, top: y, right: x + w, bottom: y + h };
+        if MagSetWindowSource(magnifier, source) == 0 { zoom_destroy(z); return None; }
         ShowWindow(host, SW_SHOWNOACTIVATE);
+        allow_capture(host as isize);
         SetWindowPos(host, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        Some(ZoomHost { host, screen, mem, bmp, old, w, h })
+        Some(z)
     }
 }
 
-/// Draw desktop rectangle `(left, top, right, bottom)` magnified to fill the whole window.
-pub fn zoom_draw(z: &ZoomHost, r: (i32, i32, i32, i32), smooth: bool) -> bool {
+pub fn zoom_draw(z: &ZoomHost, r: (i32, i32, i32, i32), _smooth: bool) -> bool {
+    if r.2 <= r.0 || r.3 <= r.1 || !update_zoom_filter(z) { return false; }
+    let mut transform = MAGTRANSFORM { v: [0.0; 9] };
+    transform.v[0] = z.w as f32 / (r.2 - r.0) as f32;
+    transform.v[4] = z.h as f32 / (r.3 - r.1) as f32;
+    transform.v[8] = 1.0;
     unsafe {
-        // HALFTONE looks best but is slow; while the view moves, favour frame rate.
-        SetStretchBltMode(z.mem, if smooth { HALFTONE } else { COLORONCOLOR });
-        SetBrushOrgEx(z.mem, 0, 0, null_mut());
-        let ok = StretchBlt(z.mem, 0, 0, z.w, z.h, z.screen, r.0, r.1, r.2 - r.0, r.3 - r.1, SRCCOPY) != 0;
-        let dc = GetDC(z.host);
-        BitBlt(dc, 0, 0, z.w, z.h, z.mem, 0, 0, SRCCOPY);
-        ReleaseDC(z.host, dc);
+        let ok = MagSetWindowTransform(z.magnifier, &mut transform) != 0
+            && MagSetWindowSource(z.magnifier, RECT { left: r.0, top: r.1, right: r.2, bottom: r.3 }) != 0;
+        InvalidateRect(z.magnifier, null(), 0);
         ok
     }
 }
@@ -184,6 +207,9 @@ pub fn zoom_draw(z: &ZoomHost, r: (i32, i32, i32, i32), smooth: bool) -> bool {
 /// Debug aid: write the current frame as a 32-bit BMP.
 pub fn zoom_dump(z: &ZoomHost, path: &str) {
     unsafe {
+        let mut r: RECT = std::mem::zeroed();
+        GetWindowRect(z.host, &mut r);
+        BitBlt(z.mem, 0, 0, z.w, z.h, z.screen, r.left, r.top, SRCCOPY | CAPTUREBLT);
         SelectObject(z.mem, z.old);
         let mut info: BITMAPINFO = std::mem::zeroed();
         info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
@@ -218,10 +244,41 @@ pub fn zoom_destroy(z: ZoomHost) {
         DeleteDC(z.mem);
         ReleaseDC(null_mut(), z.screen);
         DestroyWindow(z.host);
+        MagUninitialize();
     }
 }
 
-/// 모니터 한 대의 화면을 RGBA(위→아래)로 가져온다. 우리 창은 캡처에서 제외되어 있어 확대 중에도 원본 화면이 잡힌다.
+#[cfg(test)]
+mod sharing_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires an interactive Windows desktop"]
+    fn magnifier_is_shareable_and_filters_own_windows() {
+        let z = zoom_create((0, 0, 160, 120)).expect("create native magnifier");
+        assert!(zoom_draw(&z, (0, 0, 80, 60), true));
+        pump_messages();
+        unsafe {
+            let mut affinity = u32::MAX;
+            assert_ne!(GetWindowDisplayAffinity(z.host, &mut affinity), 0);
+            assert_eq!(affinity, 0, "zoom must remain visible to external capture");
+            let mut mode = u32::MAX;
+            let count = MagGetWindowFilterList(z.magnifier, &mut mode, 0, null_mut());
+            assert!(count > 0);
+            let mut windows = vec![null_mut(); count as usize];
+            assert_eq!(MagGetWindowFilterList(z.magnifier, &mut mode, count, windows.as_mut_ptr()), count);
+            assert_eq!(mode, MW_FILTERMODE_EXCLUDE);
+            assert!(windows.contains(&z.host), "prevent recursive self-magnification");
+            let mut transform = MAGTRANSFORM { v: [0.0; 9] };
+            assert_ne!(MagGetWindowTransform(z.magnifier, &mut transform), 0);
+            assert_eq!(transform.v[0], 2.0);
+            assert_eq!(transform.v[4], 2.0);
+        }
+        zoom_destroy(z);
+    }
+}
+
+/// 모니터에 실제 표시된 확대·필기·포인터를 포함해 RGBA로 캡처한다.
 /// 메모리로만 전달하며 파일에 쓰지 않는다. 크기는 한 축 8192, 총 1,677만 픽셀로 제한(ZoomIt/기존 엔진과 동일 한도).
 pub fn grab_rect(rect: (i32, i32, i32, i32)) -> Option<(i32, i32, Vec<u8>)> {
     let (x, y, w, h) = rect;
