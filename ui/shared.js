@@ -26,18 +26,18 @@ const HALO_COLORS = [
   { rgb: '235,166,64', name: '앰버' },
   { rgb: '239,120,108', name: '코랄' },
 ];
-const RIPPLE_RIGHT = '235,166,64';
+
 
 // 전역 단축키 기본값(설정에서 바꿀 수 있다). 형식은 Rust/tauri와 같다: `ctrl+alt+up`
 const DEFAULT_KEYS = {
-  zin: 'ctrl+1', zout: '', pen: 'ctrl+2', hl: 'ctrl+3', eraser: 'ctrl+4', text: 'ctrl+5', ptr: 'ctrl+6', clear: 'ctrl+7',
-  zoom: 'ctrl+alt+z', board: 'ctrl+0',
-  'shot-copy': 'ctrl+alt+c', 'shot-save': 'ctrl+alt+s', record: 'ctrl+alt+r', quit: 'ctrl+alt+q',
+  zin: 'ctrl+1', pen: 'ctrl+2', hl: 'ctrl+3', eraser: 'ctrl+4', text: 'ctrl+5', ptr: 'ctrl+6', clear: 'ctrl+7',
+  'zoom-mode': 'ctrl+shift+1', zoom: 'ctrl+alt+z', board: 'ctrl+0',
+  'shot-copy': 'ctrl+alt+c', quit: 'ctrl+alt+q',
 };
 const KEY_LABELS = {
-  zoom: '확대 켜기/끄기', zin: '확대 (+)', zout: '축소 (−)', pen: '펜', hl: '형광펜', eraser: '지우개', text: '텍스트',
-  ptr: '포인터 강조', clear: '모두 지우기', board: '화이트보드/칠판', 'shot-copy': '화면 복사', 'shot-save': '화면 저장',
-  record: '녹화', quit: '종료',
+  'zoom-mode': '줌 ↔ 라이브 줌', zoom: '확대 켜기/끄기', zin: '일반 줌 (+)', pen: '펜', hl: '형광펜', eraser: '지우개', text: '텍스트',
+  ptr: '포인터 강조', clear: '모두 지우기', board: '화이트보드/칠판', 'shot-copy': '화면 복사',
+  quit: '종료',
 };
 // Rust(set_hotkeys)가 받는 [조합, 동작] 목록. 비어 있는 조합은 보내지 않는다.
 const hotkeyList = (keys) => Object.entries(keys).filter(([, combo]) => combo).map(([act, combo]) => [combo, act]);
@@ -55,19 +55,23 @@ function comboFromEvent(e) {
 
 const SETTINGS_KEY = 'oniscreen-settings';
 const SETTINGS_VER = 3;
-const DEFAULTS = { haloOn: true, ripple: true, haloSize: 44, haloOpacity: 100, zoomDefault: 2, zoomStep: 0.25, zoomLadder: false, holdKey: 'space', drawView: 'stroke', keys: DEFAULT_KEYS, penColor: '#292927', zoomTarget: -1, hotkeys: true, haloColor: '35,131,226', penWidth: 4, textSize: 28, reduceMotion: false };
+const DEFAULTS = { haloOn: true, ripple: true, haloSize: 44, haloOpacity: 100, zoomDefault: 2, zoomStep: 0.25, zoomLadder: false, holdKey: 'space', drawView: 'stroke', keys: DEFAULT_KEYS, penColor: '#292927', textColor: '#292927', zoomMode: 'fixed', zoomTarget: -1, hotkeys: true, haloColor: '35,131,226', rippleColor: '35,131,226', penWidth: 4, textSize: 28, reduceMotion: false };
 
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     // 기본 단축키/확대 방식을 바꾼 버전: 이전에 자동 저장된 값은 버린다
-    if (saved.ver !== SETTINGS_VER) { delete saved.keys; delete saved.zoomCenter; }
+    if (saved.keys) { delete saved.keys.zout; delete saved.keys.record; delete saved.keys['shot-save']; }
+    if (saved.keys?.['zoom-mode'] === 'ctrl+alt+l') saved.keys['zoom-mode'] = 'ctrl+shift+1';
+    // Preserve user shortcuts across upgrades; new fields receive defaults.
+    if (!saved.rippleColor) saved.rippleColor = saved.haloColor || DEFAULTS.rippleColor;
+    if (!saved.textColor) saved.textColor = saved.penColor || DEFAULTS.textColor;
     return { ...DEFAULTS, ...saved, keys: { ...DEFAULT_KEYS, ...(saved.keys || {}) } };
   }
   catch { return { ...DEFAULTS }; }
 }
 function saveSettings(s) {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...s, ver: SETTINGS_VER })); } catch { /* 저장 불가 환경에서도 동작 */ }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...s, ver: SETTINGS_VER })); return true; } catch { return false; }
 }
 const hexToRgb = (h) => `${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)}`;
 const $ = (s, r = document) => r.querySelector(s);

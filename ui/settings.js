@@ -1,24 +1,33 @@
 let S = loadSettings();
-const set = (patch) => { S = { ...S, ...patch }; saveSettings(S); paint(); };
+const persist = () => {
+  const ok = saveSettings(S);
+  $('#saveStatus').textContent = ok ? '저장됨 · 다음 실행에도 유지' : '저장 실패 · 다시 시도해 주세요';
+  return ok;
+};
+const set = (patch) => { S = { ...loadSettings(), ...patch }; persist(); paint(); };
+$('#save').onclick = persist;
 
-const hc = $('#hcolors');
-HALO_COLORS.forEach((c) => {
-  const b = document.createElement('button');
-  b.className = 'dot'; b.setAttribute('role', 'radio'); b.setAttribute('aria-label', c.name);
-  b.style.setProperty('--c', `rgb(${c.rgb})`); b.innerHTML = '<i></i>';
-  b.onclick = () => set({ haloColor: c.rgb });
-  hc.appendChild(b);
-});
+const hc = $('#hcolors'), rc = $('#rcolors');
+for (const [container, setting] of [[hc, 'haloColor'], [rc, 'rippleColor']]) {
+  HALO_COLORS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'dot'; b.setAttribute('role', 'radio'); b.setAttribute('aria-label', c.name);
+    b.style.setProperty('--c', `rgb(${c.rgb})`); b.innerHTML = '<i></i>';
+    b.onclick = () => set({ [setting]: c.rgb });
+    container.appendChild(b);
+  });
+}
 
-const pc = $('#pcolors');
-PEN_COLORS.forEach((c) => {
-  const b = document.createElement('button');
-  b.className = 'dot'; b.setAttribute('role', 'radio'); b.setAttribute('aria-label', c.name);
-  b.style.setProperty('--c', c.hex); b.innerHTML = '<i></i>';
-  if (c.hex === '#FFFFFF') b.querySelector('i').style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,.25)';
-  b.onclick = () => set({ penColor: c.hex });
-  pc.appendChild(b);
-});
+const pc = $('#pcolors'), tc = $('#tcolors');
+for (const [container, setting] of [[pc, 'penColor'], [tc, 'textColor']]) {
+  PEN_COLORS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'dot'; b.setAttribute('role', 'radio'); b.setAttribute('aria-label', c.name); b.title = c.name;
+    b.style.setProperty('--c', c.hex); b.innerHTML = '<i></i>';
+    b.onclick = () => set({ [setting]: c.hex });
+    container.appendChild(b);
+  });
+}
 
 const zt = $('#ztarget');
 (async () => {
@@ -63,9 +72,12 @@ Object.keys(KEY_LABELS).forEach((act) => {
 function paint() {
   $$('.kbtn', keysEl).forEach((b) => { b.classList.toggle('rec', capturing === b.dataset.act); b.textContent = capturing === b.dataset.act ? '키를 누르세요…' : keyLabel(S.keys[b.dataset.act]); });
   zt.value = String(S.zoomTarget);
+  $('#zoomMode').value = S.zoomMode;
+  $$('.dot', tc).forEach((d, i) => d.setAttribute('aria-checked', String(PEN_COLORS[i].hex === S.textColor)));
   $('#hk').checked = S.hotkeys;
   $('#haloOn').checked = S.haloOn;
   $('#ripple').checked = S.ripple;
+  $$('.dot', rc).forEach((d, i) => d.setAttribute('aria-checked', String(HALO_COLORS[i].rgb === S.rippleColor)));
   $('#reduce').checked = S.reduceMotion;
   $('#size').value = S.haloSize; $('#sizeV').textContent = `${S.haloSize}px`;
   $('#opac').value = S.haloOpacity; $('#opacV').textContent = `${S.haloOpacity}%`;
@@ -85,6 +97,7 @@ $('#reduce').onchange = (e) => set({ reduceMotion: e.target.checked });
 $('#size').oninput = (e) => set({ haloSize: +e.target.value });
 $('#opac').oninput = (e) => set({ haloOpacity: +e.target.value });
 $('#zdef').oninput = (e) => set({ zoomDefault: +e.target.value });
+$('#zoomMode').onchange = e => set({ zoomMode: e.target.value });
 $('#holdKey').onchange = (e) => set({ holdKey: e.target.value });
 $('#drawView').onchange = (e) => set({ drawView: e.target.value });
 $('#zladder').onchange = (e) => set({ zoomLadder: e.target.checked });
@@ -96,3 +109,23 @@ $('#pw').oninput = (e) => set({ penWidth: +e.target.value });
 $('#quit').onclick = () => invoke('quit');
 addEventListener('storage', () => { S = loadSettings(); paint(); });
 paint();
+
+$('#checkUpdate').onclick = async () => {
+  const button = $('#checkUpdate'), status = $('#updateStatus');
+  button.disabled = true; $('#downloadUpdate').hidden = true;
+  status.textContent = '최신 버전 확인 중…';
+  try {
+    const result = await invoke('check_update');
+    status.textContent = result.available ? `새 버전 ${result.latest} · 현재 ${result.current}` : `최신 버전입니다 · ${result.current}`;
+    $('#downloadUpdate').hidden = !result.available;
+  } catch (error) { status.textContent = `확인하지 못했습니다 · ${error}`; }
+  finally { button.disabled = false; }
+};
+$('#downloadUpdate').onclick = async () => {
+  const button = $('#downloadUpdate'); button.disabled = true;
+  try {
+    await invoke('download_update');
+    $('#updateStatus').textContent = '브라우저에서 설치 파일을 내려받은 뒤 실행해 주세요.';
+  } catch (error) { $('#updateStatus').textContent = `다운로드를 열지 못했습니다 · ${error}`; }
+  finally { button.disabled = false; }
+};

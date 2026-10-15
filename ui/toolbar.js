@@ -3,45 +3,66 @@ const st = {
   tool: null, color: loadSettings().penColor, shape: 'rect', hlShape: false,
   board: null, boardMon: 0,
   z: 1, zoomActive: false, zoomMon: -1, owner: -1, editing: false,
-  rec: false, recSecs: 0,
 };
 let settings = loadSettings();
 
 const bar = $('#bar');
 const stack = $('#stack');
-const zs = $('#zslider');
-let zDrag = false;
 const toolBtns = $$('#tools .btn');
 const shapeBtns = $$('#shapes .btn');
 const ptrBtn = $('#ptrBtn');
+let zoomRangeDragging = false;
+let toolbarFolded = false;
 
 const DRAWING = ['pen', 'hl', 'eraser', 'text', 'shape'];
 const isDrawing = () => DRAWING.includes(st.tool);
 
 function pickColor(hex) {
-  st.color = hex;
+  settings = loadSettings();
+  if (!st.tool) {
+    settings.haloColor = hex.includes(',') ? hex : hexToRgb(hex);
+    saveSettings(settings); render(); return;
+  }
+  settings[st.tool === 'text' ? 'textColor' : 'penColor'] = hex;
+  saveSettings(settings);
   if (!st.tool || st.tool === 'eraser') st.tool = 'pen';
   render(); pushState();
 }
 
 function render() {
-  stack.classList.toggle('has-sub', isDrawing() || !!st.board || st.rec);
+  st.color = settings[st.tool === 'text' ? 'textColor' : 'penColor'];
+  $('#zoomFixed').setAttribute('aria-pressed', String(st.zoomActive && settings.zoomMode === 'fixed'));
+  $('#zoomLive').setAttribute('aria-pressed', String(st.zoomActive && settings.zoomMode === 'live'));
+  $('#palette').setAttribute('aria-label', !st.tool ? '포인터 색상' : st.tool === 'text' ? '텍스트 색상' : '펜 색상');
+  stack.classList.toggle('pointer-mode', !st.tool);
+  bar.classList.toggle('folded', toolbarFolded);
+  stack.classList.toggle('folded', toolbarFolded);
+  $('#fold').setAttribute('aria-expanded', String(!toolbarFolded));
+  $('#fold').setAttribute('aria-label', toolbarFolded ? '펼치기' : '접기');
   toolBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === st.tool)));
   shapeBtns.forEach((b) => b.setAttribute('aria-pressed', String(st.tool === 'shape' && b.dataset.shape === st.shape)));
   ptrBtn.setAttribute('aria-pressed', String(settings.haloOn));
   $('#hlShape').setAttribute('aria-pressed', String(st.hlShape));
   $('#boardW').setAttribute('aria-pressed', String(st.board === 'white'));
   $('#boardK').setAttribute('aria-pressed', String(st.board === 'black'));
+  $$('#palette button').forEach((b, i) => {
+    const c = !st.tool ? HALO_COLORS[i] : PEN_COLORS[i];
+    b.dataset.color = c.rgb || c.hex;
+    b.setAttribute('aria-label', c.name);
+    b.querySelector('i').style.setProperty('--swatch', c.rgb ? `rgb(${c.rgb})` : c.hex);
+    b.setAttribute('aria-pressed', String(b.dataset.color === (!st.tool ? settings.haloColor : st.color)));
+  });
+  $$('#ringPalette button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.color === settings.rippleColor)));
+  $('#pointerOpacity').value = settings.haloOpacity;
+  $('#pointerOpacityValue').textContent = `${settings.haloOpacity}%`;
+  $('#pointerSize').value = settings.haloSize;
+  $('#pointerSizeValue').textContent = `${settings.haloSize}px`;
   $('#pw').value = settings.penWidth; $('#pwv').textContent = `${settings.penWidth}px`;
-  const rec = $('#rec');
-  rec.setAttribute('aria-pressed', String(st.rec));
-  $('#recT').textContent = st.rec ? fmtTime(st.recSecs) : '녹화';
-  const z = st.zoomActive ? st.z : 1;
-  $('#zhold').hidden = !(st.zoomActive && st.held);
-  $('#zval').textContent = `${z.toFixed(2).replace(/0$/, '')}×`;
-  if (!zDrag) zs.value = z;
+  const z = st.zoomActive ? st.z : settings.zoomDefault;
+  if (!zoomRangeDragging) $('#zoomRange').value = z;
+  $('#zoomValue').textContent = `${(zoomRangeDragging ? Number($('#zoomRange').value) : z).toFixed(2).replace(/\.?0+$/, '')}×`;
 }
-const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
 
 const pushState = () => {
   emit('state', { tool: st.tool, color: st.color, shape: st.shape, hlShape: st.hlShape, board: st.board, boardMon: st.boardMon });
@@ -59,16 +80,26 @@ function setShape(id) {
   if (st.tool === 'shape' && st.shape === id) st.tool = null; else { st.tool = 'shape'; st.shape = id; }
   render(); pushState();
 }
-function togglePointer() { settings.haloOn = !settings.haloOn; saveSettings(settings); render(); }
+function togglePointer() {
+  settings = loadSettings();
+  if (st.tool || st.board || st.zoomActive) {
+    st.tool = null; st.board = null; settings.haloOn = true;
+    if (st.zoomActive) invoke('zoom_exit');
+  } else settings.haloOn = !settings.haloOn;
+  saveSettings(settings); render(); pushState();
+}
 // 확대 중이 아니면 기본 배율로 시작하고, 확대 중이면 한 단계 키운다
-function zoomIn() { if (st.zoomActive) zoomStep(0.25); else invoke('begin_zoom', { z: settings.zoomDefault }); }
+function zoomIn() {
+  if (st.zoomActive && settings.zoomMode === 'fixed') return zoomStep(0.25);
+  return selectZoomMode('fixed', false);
+}
 function toggleZoom() {
   if (st.zoomActive) invoke('zoom_exit');
   else invoke('begin_zoom', { z: settings.zoomDefault });
 }
 const zoomStep = (d) => invoke('zoom_step', { d: d * settings.zoomStep / 0.25 });
 
-// 화면 대상(스크린샷·보드·녹화): 확대 중인 화면 > 마지막으로 필기한 화면 > 작업 중인 화면
+// 화면 대상(스크린샷·보드): 확대 중인 화면 > 마지막으로 필기한 화면 > 작업 중인 화면
 async function targetMon() {
   if (st.zoomActive && st.zoomMon >= 0) return st.zoomMon;
   if (st.owner >= 0) return st.owner;
@@ -84,10 +115,6 @@ async function setBoard(kind) {
 }
 const cycleBoard = () => setBoard(st.board === null ? 'white' : st.board === 'white' ? 'black' : 'white');
 async function shot(op) { emit('shot', { op, m: await targetMon() }); }
-async function toggleRecord() {
-  if (st.rec) { invoke('record_toggle', { on: false }); return; }
-  invoke('record_toggle', { on: true, mon: await targetMon() });
-}
 function setPenWidth(w) {
   settings = loadSettings();
   settings.penWidth = Math.min(MAX_PEN, Math.max(MIN_PEN, Math.round(w)));
@@ -100,20 +127,41 @@ $('#hlShape').onclick = () => { st.hlShape = !st.hlShape; if (st.tool !== 'shape
 $('#boardW').onclick = () => setBoard('white');
 $('#boardK').onclick = () => setBoard('black');
 $('#shotCopy').onclick = () => shot('copy');
-$('#shotSave').onclick = () => shot('save');
-$('#rec').onclick = toggleRecord;
+$$('#palette button').forEach(b => b.onclick = () => pickColor(b.dataset.color));
+$$('#ringPalette button').forEach(b => b.onclick = () => { settings = loadSettings(); settings.rippleColor = b.dataset.color; saveSettings(settings); render(); });
 $('#pw').oninput = (e) => setPenWidth(+e.target.value);
+for (const [id, key] of [['#pointerOpacity', 'haloOpacity'], ['#pointerSize', 'haloSize']]) {
+  $(id).oninput = e => { settings = loadSettings(); settings[key] = Number(e.target.value); saveSettings(settings); render(); };
+}
 ptrBtn.onclick = togglePointer;
 ptrBtn.oncontextmenu = (e) => { e.preventDefault(); invoke('open_settings'); };
-zs.oninput = () => { zDrag = true; invoke('zoom_set', { z: +zs.value }); };
-zs.onchange = () => { zDrag = false; render(); };
-$('#zin').onclick = zoomIn;
-$('#zout').onclick = () => zoomStep(-0.25);
+async function selectZoomMode(mode, toggleOff = true) {
+  if (toggleOff && st.zoomActive && settings.zoomMode === mode) { await invoke('zoom_exit'); return; }
+  settings = loadSettings(); settings.zoomMode = mode;
+  saveSettings(settings); render();
+  await invoke('set_zoom_prefs', { ladder: !!settings.zoomLadder, step: settings.zoomStep, live: mode === 'live' });
+  if (!st.zoomActive) await invoke('begin_zoom', { z: settings.zoomDefault });
+}
+$('#zoomFixed').onclick = () => selectZoomMode('fixed');
+$('#zoomLive').onclick = () => selectZoomMode('live');
+$('#zoomRange').oninput = e => {
+  zoomRangeDragging = true;
+  settings = loadSettings(); settings.zoomDefault = Number(e.target.value); saveSettings(settings);
+  if (st.zoomActive) invoke('zoom_set', { z: settings.zoomDefault });
+  render();
+};
+$('#zoomRange').onchange = () => { zoomRangeDragging = false; render(); };
+$('#zoomRange').addEventListener('pointercancel', () => { zoomRangeDragging = false; render(); });
+const switchZoomMode = () => selectZoomMode(settings.zoomMode === 'live' ? 'fixed' : 'live', false);
 $('#undo').onclick = () => emit('ink', { op: 'undo' });
 $('#clear').onclick = () => emit('ink', { op: 'clear' });
 $('#gear').onclick = () => invoke('open_settings');
-$('#quit').onclick = () => { if (st.rec) invoke('record_toggle', { on: false }); invoke('quit'); };
-$('#fold').onclick = () => { bar.classList.toggle('folded'); stack.classList.toggle('folded'); };
+$('#quit').onclick = () => invoke('quit');
+$('#fold').onclick = () => {
+  toolbarFolded = !toolbarFolded;
+  if (toolbarFolded) popupMenus.forEach(menu => { menu.open = false; });
+  render(); resizeToolbar();
+};
 
 // 글자 단축키(ZoomIt): 색상 R G B O Y K W. 기본 색은 설정에서 고른다.
 const COLOR_KEY = Object.fromEntries(PEN_COLORS.map((c) => [c.key, c.hex]));
@@ -124,7 +172,7 @@ listen('hotkey', (e) => {
   const a = e.payload;
   if (typeof a === 'string' && a.startsWith('key:')) { if (isDrawing() && !st.editing) letterKey(a.slice(4)); return; }
   ({
-    zoom: toggleZoom, zin: zoomIn, zout: () => zoomStep(-0.25),
+    zoom: toggleZoom, 'zoom-mode': switchZoomMode, zin: zoomIn,
     esc: () => {
       if (st.editing) emit('text-cancel');
       else if (st.zoomActive) invoke('zoom_exit');
@@ -134,7 +182,7 @@ listen('hotkey', (e) => {
     undo: () => { if (!st.editing) emit('ink', { op: 'undo' }); },
     pen: () => setTool('pen'), hl: () => setTool('hl'), eraser: () => setTool('eraser'), text: () => setTool('text'),
     ptr: togglePointer, clear: () => emit('ink', { op: 'clear' }),
-    board: cycleBoard, 'shot-copy': () => shot('copy'), 'shot-save': () => shot('save'), record: toggleRecord,
+    board: cycleBoard, 'shot-copy': () => shot('copy'),
   })[a]?.();
 });
 
@@ -144,7 +192,6 @@ listen('key', ({ payload: { key, ctrl } }) => {
   if (k === 'escape') { if (st.zoomActive) invoke('zoom_exit'); else if (st.board) setBoard(st.board); else if (st.tool) setTool(st.tool); }
   else if (ctrl && k === 'z') emit('ink', { op: 'undo' });
   else if (ctrl && k === 'c') shot('copy');
-  else if (ctrl && k === 's') shot('save');
   else if (!ctrl && KEY_TOOL[k]) setTool(KEY_TOOL[k]);
   else if (!ctrl && COLOR_KEY[k] && isDrawing()) letterKey(k);
   else if (!ctrl && k === 'm') togglePointer();
@@ -161,61 +208,73 @@ listen('state-request', pushState);
 listen('text-editing', ({ payload }) => { st.editing = payload.on; syncKeys(); });
 listen('ink-owner', ({ payload }) => { st.owner = payload.m; });
 listen('pen-width', () => { settings = loadSettings(); render(); });
-listen('record-state', ({ payload }) => { st.rec = !!payload.active; st.recSecs = payload.secs || 0; render(); });
-// 토스트는 오버레이가 그린다. 녹화 결과(저장 경로/오류)는 대상 화면의 오버레이에 알린다.
-listen('record-state', async ({ payload }) => {
-  if (payload.active) return;
-  const m = await targetMon();
-  if (payload.path) emit('toast', { m, msg: `녹화 저장 · ${payload.path}` });
-  else if (payload.error) emit('toast', { m, msg: `녹화 실패: ${payload.error}` });
-});
 addEventListener('storage', () => {
-  const prev = settings.penColor;
   settings = loadSettings();
-  if (settings.penColor !== prev) { st.color = settings.penColor; pushState(); }
-  render();
+  render(); pushState();
 });
 
 // 창 크기를 툴바 내용에 맞춤 (아래 36px은 툴팁 여유)
-new ResizeObserver(() => {
-  const r = stack.getBoundingClientRect();
-  invoke('resize_toolbar', { width: Math.ceil(r.width) + 16, height: Math.ceil(r.height) + 16 + 36 });
-}).observe(stack);
+let resizePending = false;
+let resizeRunning = false;
+let lastToolbarSize = '';
+async function resizeToolbar() {
+  resizePending = true;
+  if (resizeRunning) return;
+  resizeRunning = true;
+  try {
+    while (resizePending) {
+      resizePending = false;
+      const r = stack.getBoundingClientRect();
+      const popups = toolbarFolded ? [] : $$('.width-menu[open] .width-options, .zoom-menu[open] .zoom-options, .pointer-size-menu[open] .pointer-size-options');
+      const rects = popups.map(p => p.getBoundingClientRect());
+      const right = Math.max(r.right ?? r.width + 8, ...rects.map(p => p.right));
+      const bottom = Math.max(r.bottom, ...rects.map(p => p.bottom));
+      const width = Math.ceil(right) + 8, height = Math.ceil(bottom) + 44;
+      const key = `${width}:${height}`;
+      if (key === lastToolbarSize) continue;
+      await invoke('resize_toolbar', { width, height });
+      lastToolbarSize = key;
+    }
+  } catch (error) { console.error('Toolbar resize failed', error); }
+  finally { resizeRunning = false; }
+}
+new ResizeObserver(resizeToolbar).observe(stack);
+const popupMenus = [document.querySelector('.width-menu'), document.querySelector('.zoom-menu'), document.querySelector('.pointer-size-menu')];
+for (const menu of popupMenus) {
+  menu.addEventListener('toggle', () => {
+    if (menu.open) popupMenus.forEach(other => { if (other !== menu) other.open = false; });
+    resizeToolbar();
+  });
+}
+new ResizeObserver(resizeToolbar).observe(document.querySelector('.width-options'));
+addEventListener('pointerdown', e => popupMenus.forEach(menu => { if (!menu.contains(e.target)) menu.open = false; }));
+addEventListener('keydown', e => { if (e.key === 'Escape') popupMenus.forEach(menu => { menu.open = false; }); });
+
+
 
 render();
 pushState();
 
 // ───── 툴바 이동: 버튼/슬라이더가 아닌 곳을 잡고 끌면 된다(접었을 때도 동일) ─────
-// 창이 포커스를 갖지 않으므로 Rust가 보내는 전역 포인터(`ptr`)로 따라간다.
-let lastPtr = null, drag = null;
-listen('ptr', ({ payload: p }) => {
-  lastPtr = p;
-  if (!drag) return;
-  if (!p.l) { drag = null; bar.classList.remove('moving'); return; }
-  invoke('move_toolbar', { x: drag.wx + p.x - drag.px, y: drag.wy + p.y - drag.py });
-});
-stack.addEventListener('pointerdown', async (e) => {
-  if (e.button !== 0 || e.target.closest('button, input')) return;
+// Windows가 드래그 수명과 포인터 캡처를 관리한다.
+stack.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || e.target.closest('button, input, summary, details')) return;
   e.preventDefault();
-  const pos = await invoke('toolbar_pos');
-  if (!pos || !lastPtr || !lastPtr.l) return;
-  drag = { px: lastPtr.x, py: lastPtr.y, wx: pos[0], wy: pos[1] };
-  bar.classList.add('moving');
+  T.window.getCurrentWindow().startDragging().catch(console.error);
 });
-
 
 // 설정을 Rust에 반영: 확대 대상 화면, 전역 단축키 사용 여부
 const applyNative = () => {
   settings = loadSettings();
   invoke('set_zoom_target', { index: settings.zoomTarget });
-  invoke('set_zoom_prefs', { ladder: !!settings.zoomLadder, step: settings.zoomStep, hold: settings.holdKey });
+  invoke('set_zoom_prefs', { ladder: !!settings.zoomLadder, step: settings.zoomStep, live: settings.zoomMode === 'live' });
   pushState(); // 필기 중 화면 동작 설정 반영
   invoke('set_hotkeys', { on: settings.hotkeys, keys: hotkeyList(settings.keys) });
   labelKeys();
 };
 
 // 툴팁의 단축키 표기를 설정과 맞춘다
-const TIP_ACT = { zout: 'zout', zin: 'zin', ptrBtn: 'ptr', clear: 'clear', boardW: 'board', boardK: 'board', shotCopy: 'shot-copy', shotSave: 'shot-save', rec: 'record', quit: 'quit' };
+const TIP_ACT = { zoomLive: 'zoom-mode', ptrBtn: 'ptr', clear: 'clear', boardW: 'board', boardK: 'board', shotCopy: 'shot-copy', quit: 'quit' };
 function labelKeys() {
   const set = (el, act) => { const k = el?.querySelector('.tip kbd'); if (k && settings.keys[act]) k.textContent = keyLabel(settings.keys[act]); };
   Object.entries(TIP_ACT).forEach(([id, act]) => set($('#' + id), act));

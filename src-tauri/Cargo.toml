@@ -1,6 +1,6 @@
 [package]
 name = "oniscreen"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "OniScreen — 강의용 화면 확대 · 필기 · 포인터 강조"
 
@@ -12,12 +12,14 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+semver = "1"
 
 [target.'cfg(windows)'.dependencies]
-# 녹화(Media Foundation H.264/MP4 인코딩) 전용
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com"] }
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Threading",
   "Win32_Graphics_Gdi",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",

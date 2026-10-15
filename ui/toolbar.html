@@ -8,34 +8,61 @@
   html, body { background: transparent; }
   body { padding: 8px; }
   .bar {
-    display: inline-flex; align-items: center; gap: 4px; padding: 6px;
+    display: inline-flex; align-items: center; gap: 2px; padding: 6px;
     background: var(--oni-bg-surface); border: 1px solid var(--oni-border-default);
     border-radius: 12px; box-shadow: var(--shadow);
   }
   .brand { width: 22px; height: 22px; margin: 0 6px 0 4px; flex: none; }
-  .stack { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; }
+  .stack { width: max-content; flex-shrink: 0; display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; }
   .bar { cursor: grab; }
-  .bar.sub { padding: 4px 6px; gap: 4px; border-radius: 12px; }
-  /* 옵션 줄은 필요할 때만(그리기 도구·보드·녹화 중) 나타나서 평소 툴바는 한 줄로 컴팩트하다 */
+  .bar.sub { padding: 4px 6px; gap: 2px; border-radius: 12px; }
+  /* 리본 표시 상태는 접기 버튼만 변경한다. */
   .stack .sub { display: none; }
-  .stack.has-sub:not(.folded) .sub { display: flex; justify-content: space-between; }
+  .stack:not(.folded) .sub { display: flex; justify-content: space-between; }
   #pw { width: 84px; height: 20px; margin: 0 2px; accent-color: var(--oni-action-default); cursor: pointer; }
   .pwv { min-width: 34px; text-align: center; font: 500 12px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; font-variant-numeric: tabular-nums; color: var(--oni-text-secondary); }
   .lbl { font: 500 12px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; color: var(--oni-text-muted); padding: 0 2px 0 4px; white-space: nowrap; }
   .btn.wide { width: auto; padding: 0 8px; gap: 6px; grid-auto-flow: column; font: 500 12px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; }
-  .btn.rec[aria-pressed="true"] { background: var(--oni-error-soft); color: var(--oni-status-error); }
-  .btn.rec[aria-pressed="true"] svg circle { fill: currentColor; }
-  .btn.rec[aria-pressed="true"] svg { animation: recpulse 1.6s ease-in-out infinite; }
-  @keyframes recpulse { 50% { opacity: .45; } }
-  @media (prefers-reduced-motion: reduce) { .btn.rec[aria-pressed="true"] svg { animation: none; } }
   .btn[aria-disabled="true"] { opacity: .4; pointer-events: none; }
   .bar.moving { cursor: grabbing; }
   .bar .btn, .bar input { cursor: pointer; }
   .zoom { display: inline-flex; align-items: center; height: var(--oni-control); border-radius: 8px; background: var(--oni-bg-subtle); padding: 0 2px; }
   .zoom .btn { width: var(--oni-control-sm); height: var(--oni-control-sm); }
   .zoom output { min-width: 44px; text-align: center; font: 500 13px/1 "Noto Sans KR", "Malgun Gothic", sans-serif; font-variant-numeric: tabular-nums; }
-  .group { display: flex; gap: 2px; }
-  #zslider { width: 96px; height: 20px; margin: 0 4px; accent-color: var(--oni-action-default); cursor: pointer; }
+  .group { display: flex; gap: 1px; }
+  .bar.sub .btn { width: 30px; height: 30px; }
+  .bar .sep { margin: 0 2px; }
+  .width-menu, .zoom-menu { position: relative; cursor: default; }
+  .width-menu summary, .zoom-menu summary { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; list-style: none; cursor: pointer; padding: 8px; border-radius: 6px; background: var(--oni-bg-subtle); }
+  .width-menu summary::-webkit-details-marker, .zoom-menu summary::-webkit-details-marker { display: none; }
+  .width-options { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 150px; padding: 10px; box-shadow: var(--shadow); background: var(--oni-bg-surface); border: 1px solid var(--oni-border-default); border-radius: 8px; }
+  .width-options #pw { width: 126px; }
+  #palette .btn[aria-pressed="true"], #ringPalette .btn[aria-pressed="true"] { outline: 1px solid var(--oni-action-default); outline-offset: -1px; }
+  #palette .btn, #ringPalette .btn { width: 26px; height: 28px; }
+  #palette i, #ringPalette i { width: 14px; height: 14px; border-radius: 50%; background: var(--swatch); }
+  .pointer-size-menu { position: relative; font-size: 12px; }
+  .pointer-size-menu summary { cursor: pointer; list-style: none; padding: 4px 6px; border-radius: 6px; background: var(--oni-bg-subtle); white-space: nowrap; }
+  .pointer-size-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 6; background: var(--oni-bg-surface); padding: 8px; border: 1px solid var(--oni-border-default); border-radius: 8px; box-shadow: var(--shadow); }
+  #pointerSize { width: 100px; accent-color: var(--oni-focus); }
+  .pointer-opacity { align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+  #pointerOpacity { width: 64px; accent-color: var(--oni-focus); }
+  #pointerOpacityValue { min-width: 32px; }
+  .pointer-only { display: none; }
+  .pointer-mode .sub > :not(#palette):not(.pointer-only) { display: none; }
+  .pointer-mode .sub > .pointer-only { display: flex; }
+  .pointer-mode .sub { justify-content: flex-start !important; gap: 8px; }
+  .brand { cursor: grab; touch-action: none; }
+
+  .zoom > .btn { width: 34px; height: 32px; }
+  .zoom > .btn svg { width: 24px; height: 24px; color: var(--oni-text-primary); }
+  .zoom-menu summary { font-size: 12px; white-space: nowrap; }
+  .zoom-menu summary { display: grid; place-items: center; padding: 5px; width: 30px; height: 30px; }
+  .zoom-menu summary svg { width: 18px; height: 18px; fill: none; stroke: var(--oni-text-primary); stroke-width: 1.7; stroke-linecap: round; }
+  .zoom-options { position: absolute; left: 0; top: calc(100% + 6px); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--oni-bg-surface); border: 1px solid var(--oni-border-default); border-radius: 8px; box-shadow: var(--shadow); }
+  #zoomRange { width: 112px; accent-color: #2383E2; }
+  #zoomValue { min-width: 38px; font-size: 12px; }
+
+
   .tip {
     position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); white-space: nowrap;
     background: var(--oni-text-primary); color: #fff; font-size: 12px; line-height: 18px; padding: 3px 8px;
@@ -56,20 +83,15 @@
 <body>
 <div class="stack" id="stack">
 <div class="bar" id="bar">
-  <svg class="brand keep" role="img" viewBox="0 0 22 22" aria-label="OniScreen">
-    <rect width="22" height="22" rx="6" fill="#1B70C9"/>
-    <rect x="3.7" y="4.9" width="14.6" height="9.6" rx="1.3" fill="#fff"/>
-    <path d="M11 14.5v2M7.9 16.8h6.2" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
-    <circle cx="10.2" cy="9.4" r="2.5" fill="#DCEBFB" stroke="#1B70C9" stroke-width="1.2"/>
-    <path d="M12.1 11.3 14 13.2" stroke="#1B70C9" stroke-width="1.2" stroke-linecap="round"/>
-  </svg>
+  <img class="brand keep" src="assets/oni-screen.svg" width="22" height="22" alt="OniScreen" title="메뉴바 이동">
 
   <div class="zoom" role="group" aria-label="확대">
-    <button class="btn" id="zout" aria-label="축소"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg><span class="tip">축소<kbd>Ctrl 8</kbd></span></button>
-    <input type="range" id="zslider" min="1" max="6" step="0.25" value="1" aria-label="확대 배율">
-    <output id="zval">1.0×</output>
-    <svg id="zhold" hidden viewBox="0 0 24 24" aria-label="화면 고정됨" style="width:14px;height:14px;stroke:var(--oni-action-default);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;margin-right:2px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-    <button class="btn" id="zin" aria-label="확대"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg><span class="tip">확대<kbd>Ctrl 9</kbd></span></button>
+    <button class="btn" id="zoomFixed" aria-label="일반 줌" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5M7 10h6M10 7v6"/></svg><span class="tip">일반 줌 · 위치 고정</span></button>
+    <button class="btn" id="zoomLive" aria-label="라이브 줌" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5"/><rect x="0" y="18" width="14" height="6" rx="2" style="fill:var(--oni-focus);stroke:none"/><text x="7" y="22.6" text-anchor="middle" style="font:700 4.8px Arial,sans-serif;fill:white;stroke:none">LIVE</text></svg><span class="tip">라이브 줌 · 모드 전환<kbd>Ctrl Shift 1</kbd></span></button>
+    <details class="zoom-menu"><summary aria-label="배율 설정" title="배율 설정"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h8M6 8v8M14 12h8"/></svg></summary><div class="zoom-options" role="group" aria-label="확대 배율">
+      <input id="zoomRange" type="range" min="1.25" max="8" step="0.25" aria-label="확대 배율"><output id="zoomValue" for="zoomRange">2×</output>
+    </div></details>
+
   </div>
 
   <div class="sep"></div>
@@ -107,9 +129,23 @@
   </div>
   <button class="btn" id="hlShape" aria-pressed="false" aria-label="형광 도형"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2" style="fill:currentColor;fill-opacity:.25"/></svg><span class="tip">도형을 형광으로 채우기</span></button>
   <div class="sep"></div>
-  <span class="lbl">굵기</span>
-  <input type="range" id="pw" min="2" max="40" step="1" value="4" aria-label="펜 굵기">
-  <output class="pwv" id="pwv">4px</output>
+  <span class="lbl pointer-only">포인터</span>
+  <div class="group" id="palette" role="group" aria-label="기본 색상">
+    <button class="btn" data-color="#292927" aria-label="검정" aria-pressed="true"><i style="--swatch:#292927"></i></button>
+    <button class="btn" data-color="#2383E2" aria-label="블루" aria-pressed="false"><i style="--swatch:#2383E2"></i></button>
+    <button class="btn" data-color="#C43F35" aria-label="레드" aria-pressed="false"><i style="--swatch:#C43F35"></i></button>
+  </div>
+  <span class="lbl pointer-only">클릭 링</span>
+  <div class="group pointer-only" id="ringPalette" role="group" aria-label="클릭 링 색상">
+    <button class="btn" data-color="35,131,226" aria-label="블루"><i style="--swatch:rgb(35,131,226)"></i></button>
+    <button class="btn" data-color="235,166,64" aria-label="앰버"><i style="--swatch:rgb(235,166,64)"></i></button>
+    <button class="btn" data-color="239,120,108" aria-label="코랄"><i style="--swatch:rgb(239,120,108)"></i></button>
+  </div>
+  <label class="pointer-only pointer-opacity" for="pointerOpacity">투명도<input id="pointerOpacity" type="range" min="10" max="100" step="5"><output id="pointerOpacityValue" for="pointerOpacity">100%</output></label>
+  <details class="pointer-only pointer-size-menu"><summary aria-label="포인터 크기">크기 <output id="pointerSizeValue">44px</output> ▾</summary><div class="pointer-size-options"><input id="pointerSize" type="range" min="28" max="80" step="1" aria-label="포인터 크기"></div></details>
+  <details class="width-menu"><summary aria-label="펜 굵기"><output class="pwv" id="pwv">4px</output> ▾</summary>
+    <div class="width-options"><input type="range" id="pw" min="2" max="40" step="1" value="4" aria-label="펜 굵기"></div>
+  </details>
   <div class="sep"></div>
   <div class="group" role="group" aria-label="바탕">
     <button class="btn" id="boardW" aria-pressed="false" aria-label="화이트보드"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="1.5"/><path d="M9 20h6"/></svg><span class="tip">화이트보드<kbd>Ctrl 0</kbd></span></button>
@@ -117,9 +153,6 @@
   </div>
   <div class="sep"></div>
   <button class="btn" id="shotCopy" aria-label="스크린샷 복사"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h1"/></svg><span class="tip">화면 복사<kbd>Ctrl Alt C</kbd></span></button>
-  <button class="btn" id="shotSave" aria-label="스크린샷 저장"><svg viewBox="0 0 24 24"><path d="M12 4v10M8 10.5 12 14.5l4-4M5 19h14"/></svg><span class="tip">화면 저장 (사진\OniScreen)<kbd>Ctrl Alt S</kbd></span></button>
-  <div class="sep"></div>
-  <button class="btn wide rec" id="rec" aria-pressed="false" aria-label="녹화"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/></svg><span id="recT">녹화</span><span class="tip">화면 녹화 (MP4)<kbd>Ctrl Alt R</kbd></span></button>
 </div>
 </div>
 <script src="shared.js"></script>

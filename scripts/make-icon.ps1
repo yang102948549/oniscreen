@@ -20,29 +20,19 @@ $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 $g.Clear([System.Drawing.Color]::Transparent)
 
-$blue = [System.Drawing.ColorTranslator]::FromHtml('#1B70C9')
-$white = [System.Drawing.Color]::White
-
-# Background: Oni action-blue gradient
-$bg = New-RoundRect 0 0 $size $size 228
-$grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-    (New-Object System.Drawing.PointF(0, 0)), (New-Object System.Drawing.PointF(0, $size)),
-    [System.Drawing.ColorTranslator]::FromHtml('#2E8AE6'), [System.Drawing.ColorTranslator]::FromHtml('#155FB0'))
-$g.FillPath($grad, $bg)
-
-# Screen (monitor) and stand
-$wb = New-Object System.Drawing.SolidBrush($white)
-$g.FillPath($wb, (New-RoundRect 172 228 680 448 60))
-$g.FillRectangle($wb, 468, 670, 88, 90)
-$g.FillPath($wb, (New-RoundRect 344 748 336 60 30))
-
-# Magnifier inside the screen
-$g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#DCEBFB'))), 358, 318, 236, 236)
-$pen = New-Object System.Drawing.Pen($blue, 54)
-$pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$g.DrawEllipse($pen, 358, 318, 236, 236)
-$g.DrawLine($pen, 566, 526, 652, 612)
+# Minimal screen and pen mark, matching ui/assets/oni-screen.svg.
+$g.ScaleTransform([single]($size / 24.0), [single]($size / 24.0))
+$blueBrush = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#2383E2'))
+$whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+$g.FillPath($blueBrush, (New-RoundRect 0 0 24 24 5.5))
+$line = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [single]1.5)
+$line.StartCap = $line.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+$g.DrawPath($line, (New-RoundRect 4.5 5.5 15 11 1.5))
+$g.DrawLine($line, [single]12, [single]16.5, [single]12, [single]19)
+$g.DrawLine($line, [single]9, [single]19, [single]15, [single]19)
+$points = [System.Drawing.PointF[]]@([System.Drawing.PointF]::new(9,13.5), [System.Drawing.PointF]::new(9.7,10.8), [System.Drawing.PointF]::new(14,6.5), [System.Drawing.PointF]::new(16,8.5), [System.Drawing.PointF]::new(11.7,12.8))
+$g.FillPolygon($whiteBrush, $points)
+$blueBrush.Dispose(); $whiteBrush.Dispose(); $line.Dispose()
 
 $g.Dispose()
 $out = Join-Path (Split-Path -Parent $PSScriptRoot) 'icon-source.png'

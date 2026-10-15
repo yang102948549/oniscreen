@@ -6,15 +6,28 @@ use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-/// 로컬 시각 (연, 월, 일, 시, 분, 초) — 파일 이름용.
-pub fn local_time() -> (i32, i32, i32, i32, i32, i32) {
-    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+pub struct AppInstance(windows_sys::Win32::Foundation::HANDLE);
+impl Drop for AppInstance {
+    fn drop(&mut self) { unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0); } }
+}
+
+pub fn single_instance() -> Result<Option<AppInstance>, std::io::Error> {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    let name: Vec<u16> = "Local\\kr.oniclass.oniscreen.instance\0".encode_utf16().collect();
     unsafe {
-        let mut t = std::mem::zeroed();
-        GetLocalTime(&mut t);
-        (t.wYear as i32, t.wMonth as i32, t.wDay as i32, t.wHour as i32, t.wMinute as i32, t.wSecond as i32)
+        let handle = CreateMutexW(null(), 0, name.as_ptr());
+        if handle.is_null() { return Err(std::io::Error::last_os_error()); }
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            CloseHandle(handle);
+            return Ok(None);
+        }
+        Ok(Some(AppInstance(handle)))
     }
 }
+
+/// 로컬 시각 (연, 월, 일, 시, 분, 초) — 파일 이름용.
+
 
 pub fn cursor_pos() -> (i32, i32) {
     let mut p = POINT { x: 0, y: 0 };
@@ -37,9 +50,7 @@ pub fn buttons() -> (bool, bool) {
 }
 
 /// 가상 키가 눌려 있는지(읽기 전용). `화면 고정 키`에 쓴다.
-pub fn key_down(vk: i32) -> bool {
-    unsafe { (GetAsyncKeyState(vk) as u16 & 0x8000) != 0 }
-}
+
 
 /// Tab / Shift / Ctrl 키가 눌려 있는지(도형 보조키). 읽기 전용.
 pub fn modifier_keys() -> (bool, bool, bool) {
@@ -302,100 +313,6 @@ pub fn copy_rgba_to_clipboard(w: i32, h: i32, rgba: &[u8]) -> bool {
             GlobalFree(mem); // 클립보드가 소유권을 받지 못한 경우에만 해제
         }
         ok
-    }
-}
-
-/// 녹화 프레임을 합성하는 작업 비트맵(32bpp, 위→아래). 화면이나 확대 결과를 복사하고 커서를 덧그린다.
-/// 읽기 전용 API만 쓴다: 시스템 커서는 `GetCursorInfo`로 읽기만 하고 숨기거나 바꾸지 않는다.
-pub struct RecCanvas {
-    dc: HDC,
-    bmp: HBITMAP,
-    old: HGDIOBJ,
-    bits: *mut u8,
-    pub w: i32,
-    pub h: i32,
-}
-
-impl RecCanvas {
-    pub fn new(w: i32, h: i32) -> Option<Self> {
-        unsafe {
-            let screen = GetDC(null_mut());
-            let dc = CreateCompatibleDC(screen);
-            ReleaseDC(null_mut(), screen);
-            if dc.is_null() {
-                return None;
-            }
-            let mut info: BITMAPINFO = std::mem::zeroed();
-            info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-            info.bmiHeader.biWidth = w;
-            info.bmiHeader.biHeight = -h;
-            info.bmiHeader.biPlanes = 1;
-            info.bmiHeader.biBitCount = 32;
-            info.bmiHeader.biCompression = BI_RGB;
-            let mut bits: *mut core::ffi::c_void = null_mut();
-            let bmp = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
-            if bmp.is_null() || bits.is_null() {
-                DeleteDC(dc);
-                return None;
-            }
-            let old = SelectObject(dc, bmp);
-            Some(Self { dc, bmp, old, bits: bits as *mut u8, w, h })
-        }
-    }
-
-    /// 데스크톱의 `(x, y)`에서 `w×h`를 복사한다(우리 창은 캡처에서 제외되어 보이지 않음).
-    pub fn copy_screen(&mut self, x: i32, y: i32) -> bool {
-        unsafe {
-            let screen = GetDC(null_mut());
-            let ok = BitBlt(self.dc, 0, 0, self.w, self.h, screen, x, y, SRCCOPY | CAPTUREBLT) != 0;
-            ReleaseDC(null_mut(), screen);
-            ok
-        }
-    }
-
-    /// 확대 창이 마지막으로 그린 확대 화면을 복사한다.
-    pub fn copy_zoom(&mut self, z: &ZoomHost) -> bool {
-        unsafe { BitBlt(self.dc, 0, 0, self.w.min(z.w), self.h.min(z.h), z.mem, 0, 0, SRCCOPY) != 0 }
-    }
-
-    /// 화면 좌표 `(cx, cy)`가 이 프레임에서 `(px, py)`에 놓이도록 현재 커서를 덧그린다.
-    pub fn draw_cursor(&mut self, px: i32, py: i32) {
-        unsafe {
-            let mut ci: CURSORINFO = std::mem::zeroed();
-            ci.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
-            if GetCursorInfo(&mut ci) == 0 || ci.flags & CURSOR_SHOWING == 0 || ci.hCursor.is_null() {
-                return;
-            }
-            let mut ii: ICONINFO = std::mem::zeroed();
-            if GetIconInfo(ci.hCursor, &mut ii) == 0 {
-                return;
-            }
-            DrawIconEx(self.dc, px - ii.xHotspot as i32, py - ii.yHotspot as i32, ci.hCursor, 0, 0, 0, null_mut(), DI_NORMAL);
-            if !ii.hbmMask.is_null() {
-                DeleteObject(ii.hbmMask);
-            }
-            if !ii.hbmColor.is_null() {
-                DeleteObject(ii.hbmColor);
-            }
-        }
-    }
-
-    /// BGRA 픽셀(`w*h*4`). GDI 그리기가 끝난 뒤에 읽는다.
-    pub fn pixels(&mut self) -> &mut [u8] {
-        unsafe {
-            GdiFlush();
-            std::slice::from_raw_parts_mut(self.bits, (self.w * self.h * 4) as usize)
-        }
-    }
-}
-
-impl Drop for RecCanvas {
-    fn drop(&mut self) {
-        unsafe {
-            SelectObject(self.dc, self.old);
-            DeleteObject(self.bmp);
-            DeleteDC(self.dc);
-        }
     }
 }
 

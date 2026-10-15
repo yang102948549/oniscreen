@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod recorder;
 mod win;
+mod updates;
 mod zoom_anim;
 
 use std::{
@@ -21,7 +21,6 @@ use tauri::{
     WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use recorder::Recorder;
 use zoom_anim::ZoomAnim;
 
 #[derive(Clone, Copy, Serialize)]
@@ -39,30 +38,19 @@ enum MagCmd {
     Step(f32),
     /// 휠 한 칸 (+1 확대 / -1 축소). `ladder`면 ZoomIt식 2배 사다리, 아니면 `step`만큼 선형.
     Wheel { dir: i32, ladder: bool, step: f32 },
-    /// 녹화 시작(대상 모니터) / 종료. 녹화기는 확대 스레드가 소유한다.
-    RecStart(usize),
-    RecStop,
     Stop,
+    Pan { dx: f32, dy: f32 },
+    ViewHold(bool),
     /// 필기 중 화면 고정. `hold`면 마우스 왼쪽 버튼을 누르고 있는 동안만 고정(그 외에는 라이브로 따라간다).
     Freeze { on: bool, hold: bool },
 }
 
-/// 오버레이가 보낸 최신 필기 레이어(RGBA, 화면에 보이는 그대로). 녹화 프레임에 합성한다.
-struct InkFrame {
-    m: usize,
-    w: i32,
-    h: i32,
-    rgba: Vec<u8>,
-}
-
 struct AppState {
     wheel_ladder: AtomicBool,
-    /// 누르고 있는 동안 확대 화면을 멈추는 키(가상 키 코드, 0 = 없음)
-    hold_vk: AtomicU32,
+    live_zoom: AtomicBool,
     wheel_step: AtomicU32,
     /// 사용자가 지정한 전역 단축키(등록된 조합) — 다시 지정할 때 먼저 해제한다
     custom_keys: Mutex<Vec<String>>,
-    ink: Mutex<Option<InkFrame>>,
     mons: Mutex<Vec<MonRect>>,
     mag: Mutex<Option<mpsc::Sender<MagCmd>>>,
     /// Monitor chosen in settings for zooming (NONE = automatic).
@@ -77,10 +65,9 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             wheel_ladder: AtomicBool::new(false),
-            hold_vk: AtomicU32::new(0x20),
+            live_zoom: AtomicBool::new(false),
             wheel_step: AtomicU32::new(0.25f32.to_bits()),
             custom_keys: Mutex::new(vec![]),
-            ink: Mutex::new(None),
             mons: Mutex::new(vec![]),
             mag: Mutex::new(None),
             target: AtomicUsize::new(NONE),
@@ -116,32 +103,22 @@ fn source_rect(mon: (i32, i32, i32, i32), off: (i32, i32), z: f32) -> ((i32, i32
     ((mon.0 + ox, mon.1 + oy, mon.0 + ox + sw, mon.1 + oy + sh), mon.2 as f32 / sw as f32)
 }
 
-/// 점과 사각형 사이의 거리(사각형 안이면 0).
-fn dist_to_rect(x: i32, y: i32, r: (i32, i32, i32, i32)) -> f32 {
-    let dx = (r.0 - x).max(0).max(x - r.2 + 1) as f32;
-    let dy = (r.1 - y).max(0).max(y - r.3 + 1) as f32;
-    dx.hypot(dy)
+/// Use the actual integer capture dimensions, avoiding toolbar-proximity lag and scale drift.
+fn follow_offset(size: (i32, i32), pointer: (f32, f32), zoom: f32) -> (i32, i32) {
+    let sw = (size.0 as f32 / zoom).round().clamp(1.0, size.0 as f32);
+    let sh = (size.1 as f32 / zoom).round().clamp(1.0, size.1 as f32);
+    ((pointer.0 * (1.0 - sw / size.0 as f32)).round() as i32,
+     (pointer.1 * (1.0 - sh / size.1 as f32)).round() as i32)
 }
 
-/// 툴바에 가까워질수록 화면 이동을 줄이는 비율: 툴바 위 0, `margin` 이상 1.
-fn approach_weight(dist: f32, margin: f32) -> f32 {
-    (dist / margin).clamp(0.0, 1.0)
+/// Preserve the source point beneath an on-screen anchor while changing scale.
+fn anchored_offset(off: (i32, i32), anchor: (f32, f32), before: f32, after: f32) -> (i32, i32) {
+    ((off.0 as f32 + anchor.0 / before - anchor.0 / after).round() as i32,
+     (off.1 as f32 + anchor.1 / before - anchor.1 / after).round() as i32)
 }
-
-/// 현재 위치에서 목표 쪽으로 `w` 비율만큼 이동한다(반올림). 거의 도착했으면 목표로 맞춘다.
-fn step_toward(cur: (i32, i32), target: (i32, i32), w: f32) -> (i32, i32) {
-    let f = |c: i32, t: i32| c + ((t - c) as f32 * w).round() as i32;
-    (f(cur.0, target.0), f(cur.1, target.1))
-}
-
-const TOOLBAR_MARGIN: f32 = 160.0;
 
 fn monitor_at(mons: &[MonRect], x: i32, y: i32) -> Option<usize> {
     mons.iter().position(|m| x >= m.x && x < m.x + m.w && y >= m.y && y < m.y + m.h)
-}
-
-fn toolbar_rect(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
-    app.get_webview_window(TOOLBAR).and_then(|w| hwnd_of(&w)).and_then(win::window_rect)
 }
 
 fn over_toolbar(app: &AppHandle, x: i32, y: i32) -> bool {
@@ -196,85 +173,6 @@ fn start_zoom(app: &AppHandle) -> Option<(win::ZoomHost, usize, (i32, i32, i32, 
     Some((host, idx, mon))
 }
 
-fn emit_rec(app: &AppHandle, active: bool, secs: u32, path: Option<String>, error: Option<String>) {
-    let _ = app.emit("record-state", serde_json::json!({ "active": active, "secs": secs, "path": path, "error": error }));
-}
-
-/// `동영상\OniScreen` 폴더에 `OniScreen-날짜-시간.mp4`로 저장한다.
-fn recording_path() -> Result<std::path::PathBuf, String> {
-    let base = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
-    let dir = std::path::PathBuf::from(base).join("Videos").join("OniScreen");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let t = win::local_time();
-    Ok(dir.join(format!("OniScreen-{:04}{:02}{:02}-{:02}{:02}{:02}.mp4", t.0, t.1, t.2, t.3, t.4, t.5)))
-}
-
-fn start_recording(m: MonRect) -> Result<(Recorder, win::RecCanvas), String> {
-    // H.264는 가로·세로가 짝수여야 한다.
-    let (w, h) = (m.w & !1, m.h & !1);
-    let canvas = win::RecCanvas::new(w, h).ok_or("녹화 버퍼를 만들지 못했습니다")?;
-    let rec = Recorder::start(recording_path()?, w, h)?;
-    Ok((rec, canvas))
-}
-
-/// 인코더 마무리(파일 닫기)는 별도 스레드에서 해서 확대 루프를 막지 않는다.
-fn finish_recording(app: &AppHandle, rec: Recorder) {
-    let app = app.clone();
-    thread::spawn(move || match rec.finish() {
-        Ok(p) => emit_rec(&app, false, 0, Some(p.to_string_lossy().into_owned()), None),
-        Err(e) => emit_rec(&app, false, 0, None, Some(e)),
-    });
-}
-
-/// 필기 레이어(RGBA, 비프리멀티플라이)를 BGRA 프레임에 알파 합성한다. 레이어가 프레임보다 작으면 건너뛴다.
-/// 프레임이 짝수로 잘렸을 수 있어 레이어의 행 간격은 `f.w` 기준이다.
-fn blend_ink(px: &mut [u8], w: i32, h: i32, f: &InkFrame) {
-    if f.w < w || f.h < h || px.len() < (w * h * 4) as usize {
-        return;
-    }
-    for y in 0..h as usize {
-        for x in 0..w as usize {
-            let s = (y * f.w as usize + x) * 4;
-            let a = f.rgba[s + 3] as u32;
-            if a == 0 {
-                continue;
-            }
-            let d = (y * w as usize + x) * 4;
-            let mix = |src: u8, dst: u8| ((src as u32 * a + dst as u32 * (255 - a) + 127) / 255) as u8;
-            px[d] = mix(f.rgba[s + 2], px[d]);
-            px[d + 1] = mix(f.rgba[s + 1], px[d + 1]);
-            px[d + 2] = mix(f.rgba[s], px[d + 2]);
-        }
-    }
-}
-
-/// 한 프레임을 합성한다: (확대된 화면 | 원본 화면) + 커서 + 필기 레이어. BGRA 위→아래.
-fn compose_rec_frame(
-    canvas: &mut win::RecCanvas,
-    mon: &MonRect,
-    zoomed: Option<(&win::ZoomHost, ((i32, i32, i32, i32), f32))>,
-    ink: Option<&InkFrame>,
-) -> Vec<u8> {
-    let (cx, cy) = win::cursor_pos();
-    match zoomed {
-        Some((h, (rect, ze))) => {
-            canvas.copy_zoom(h);
-            canvas.draw_cursor(((cx - rect.0) as f32 * ze).round() as i32, ((cy - rect.1) as f32 * ze).round() as i32);
-        }
-        None => {
-            canvas.copy_screen(mon.x, mon.y);
-            canvas.draw_cursor(cx - mon.x, cy - mon.y);
-        }
-    }
-    let (w, h) = (canvas.w, canvas.h);
-    let px = canvas.pixels();
-    if let Some(f) = ink {
-        blend_ink(px, w, h, f);
-    }
-    px.to_vec()
-}
-
-
 /// Owns the magnifier window and the zoom state. Live zoom follows the cursor (ZoomIt style): the
 /// point under the cursor stays under the cursor, so real clicks always hit what is shown.
 /// Pen tools freeze the view; the cursor over the toolbar pauses following so it can be used.
@@ -296,11 +194,7 @@ fn spawn_magnifier(app: AppHandle) {
         let mut frames = 0u32;
         let mut last_move = std::time::Instant::now();
         let mut reported: Option<(bool, f32, bool, bool)> = None;
-        let mut catching_up = false;
-        // 녹화: (녹화기, 작업 비트맵, 대상 모니터, 다음 프레임 시각, 마지막 상태 알림 초)
-        let mut rec: Option<(Recorder, win::RecCanvas, usize, std::time::Instant, u32)> = None;
-        // 이번 프레임의 확대 상태(원본 사각형, 실제 배율)
-        let mut last_view: Option<((i32, i32, i32, i32), f32)>;
+        let mut view_held = false;
         // Alt+휠로 확대/축소(수신 전용 Raw Input). 실패해도 다른 기능에는 영향이 없다.
         let wheel_ok = win::create_wheel_sink();
         if !wheel_ok {
@@ -325,7 +219,7 @@ fn spawn_magnifier(app: AppHandle) {
                 }
             }
             let now = clock.elapsed().as_millis() as u64;
-            let hold_vk = app.state::<AppState>().hold_vk.load(Ordering::Relaxed);
+
             let notches = if wheel_ok { win::take_wheel_notches() } else { 0 };
             if notches != 0 && host.is_some() {
                 let st = app.state::<AppState>();
@@ -336,7 +230,7 @@ fn spawn_magnifier(app: AppHandle) {
                 }
             }
             let cur = win::cursor_pos();
-            let local = ((cur.0 - mon.0) as f32, (cur.1 - mon.1) as f32);
+
             let mut stop = false;
             for c in cmds {
                 // 목표 배율을 바꾸고 애니메이션을 이어 붙인다(진행 중이던 속도를 이어받음).
@@ -360,6 +254,8 @@ fn spawn_magnifier(app: AppHandle) {
                             // 1배에서 목표 배율까지 부드럽게 들어간다(ZoomIt 진입 애니메이션).
                             anim.start(1.0, z, now, zoom_anim::duration_ms(1.0, z, true));
                             za_prev = 1.0;
+                            off = (0, 0);
+                            view_held = false;
                         }
                     }
                     MagCmd::Set(nz) => {
@@ -406,24 +302,15 @@ fn spawn_magnifier(app: AppHandle) {
                             send_mag(&app, MagCmd::Step(dir as f32 * step));
                         }
                     }
-                    MagCmd::RecStart(mon_idx) => {
-                        if rec.is_none() {
-                            let mons = app.state::<AppState>().mons.lock().unwrap().clone();
-                            match mons.get(mon_idx).copied().ok_or("모니터를 찾을 수 없습니다".to_string()).and_then(start_recording) {
-                                Ok((r, canvas)) => {
-                                    rec = Some((r, canvas, mon_idx, std::time::Instant::now(), 0));
-                                    emit_rec(&app, true, 0, None, None);
-                                }
-                                Err(e) => emit_rec(&app, false, 0, None, Some(e)),
-                            }
-                        }
-                    }
-                    MagCmd::RecStop => {
-                        if let Some((r, _c, _i, _t, _s)) = rec.take() {
-                            finish_recording(&app, r);
-                        }
-                    }
                     MagCmd::Stop => stop = true,
+                    MagCmd::ViewHold(on) => view_held = on && app.state::<AppState>().live_zoom.load(Ordering::Relaxed),
+                    MagCmd::Pan { dx, dy } => {
+                        if host.is_some() && !app.state::<AppState>().live_zoom.load(Ordering::Relaxed) && !closing && !(frozen && (!hold || win::buttons().0)) {
+                            let scale = za_prev.max(1.0);
+                            off.0 -= (dx / scale).round() as i32;
+                            off.1 -= (dy / scale).round() as i32;
+                        }
+                    }
                     MagCmd::Freeze { on, hold: h } => {
                         frozen = on;
                         hold = h;
@@ -457,33 +344,17 @@ fn spawn_magnifier(app: AppHandle) {
             }
             if let Some(h) = host.as_ref() {
                 let za = anim.sample(now).max(1.0);
-                // 필기 도구가 켜져 있어도 화면은 라이브로 커서를 따라가고, 선을 긋는 동안(버튼 누름)에만 멈춘다
-                let held = hold_vk != 0 && win::key_down(hold_vk as i32);
+                let local = ((cur.0 - mon.0) as f32, (cur.1 - mon.1) as f32);
+                // Live mode maps the source point under the pointer to that same display position.
+                let live = app.state::<AppState>().live_zoom.load(Ordering::Relaxed);
+                let held = live && view_held;
                 let still = held || (frozen && (!hold || win::buttons().0));
                 let on_screen = cur.0 >= mon.0 && cur.0 < mon.0 + mon.2 && cur.1 >= mon.1 && cur.1 < mon.1 + mon.3;
-                if !still && on_screen {
-                    let (lx, ly) = (local.0.clamp(0.0, mon.2 as f32 - 1.0), local.1.clamp(0.0, mon.3 as f32 - 1.0));
-                    // 커서 아래의 원본 점이 항상 커서 아래에 오도록(보이는 포인터 = 실제 포인터, 클릭이 보이는 곳에 맞는다)
-                    let target = ((lx * (1.0 - 1.0 / za)).round() as i32, (ly * (1.0 - 1.0 / za)).round() as i32);
-                    // 툴바에 다가가면 화면 이동을 서서히 줄여, 툴바에 닿을 때쯤 보던 곳이 그대로 남게 한다.
-                    let d = toolbar_rect(&app).map_or(f32::MAX, |r| dist_to_rect(cur.0, cur.1, r));
-                    if d < TOOLBAR_MARGIN {
-                        off = step_toward(off, target, approach_weight(d, TOOLBAR_MARGIN));
-                        catching_up = true;
-                    } else if catching_up {
-                        // 툴바에서 멀어진 뒤에는 한 번에 튀지 않고 부드럽게 따라잡는다
-                        off = step_toward(off, target, 0.35);
-                        if (off.0 - target.0).abs() < 2 && (off.1 - target.1).abs() < 2 {
-                            off = target;
-                            catching_up = false;
-                        }
-                    } else {
-                        off = target;
-                    }
-                } else if still && (za - za_prev).abs() > f32::EPSILON {
+                if live && !still && !closing && on_screen && !over_toolbar(&app, cur.0, cur.1) {
+                    off = follow_offset((mon.2, mon.3), local, za);
+                } else if (za - za_prev).abs() > f32::EPSILON {
                     // 필기 중 배율이 바뀌어도 커서 아래 점이 고정되게 한다.
-                    let s = (off.0 as f32 + local.0 / za_prev, off.1 as f32 + local.1 / za_prev);
-                    off = ((s.0 - local.0 / za).round() as i32, (s.1 - local.1 / za).round() as i32);
+                    off = anchored_offset(off, local, za_prev, za);
                 }
                 za_prev = za;
                 let (rect, ze) = source_rect(mon, off, za);
@@ -516,31 +387,6 @@ fn spawn_magnifier(app: AppHandle) {
                 if reported != Some((true, z, still, held)) {
                     reported = Some((true, z, still, held));
                     report(true, z, ze, still, mi);
-                }
-                last_view = Some((rect, ze));
-            } else {
-                last_view = None;
-            }
-            if let Some((r, canvas, ri, next, last_sec)) = rec.as_mut() {
-                if std::time::Instant::now() >= *next {
-                    *next += Duration::from_millis(1000 / recorder::FPS as u64);
-                    if *next < std::time::Instant::now() {
-                        *next = std::time::Instant::now(); // 밀렸으면 따라잡지 않고 현재 시각부터 다시
-                    }
-                    let mons = app.state::<AppState>().mons.lock().unwrap().clone();
-                    if let Some(mrec) = mons.get(*ri) {
-                        let zoomed = if mi == *ri { host.as_ref().zip(last_view) } else { None };
-                        let state = app.state::<AppState>();
-                        let ink = state.ink.lock().unwrap();
-                        let frame = compose_rec_frame(canvas, mrec, zoomed, ink.as_ref().filter(|f| f.m == *ri));
-                        drop(ink);
-                        r.push(frame);
-                    }
-                }
-                let secs = r.elapsed_secs();
-                if secs != *last_sec {
-                    *last_sec = secs;
-                    emit_rec(&app, true, secs, None, None);
                 }
             }
             thread::sleep(Duration::from_millis(8));
@@ -628,6 +474,14 @@ fn zoom_wheel(app: AppHandle, dir: i32, ladder: bool, step: f32) {
 }
 
 #[tauri::command]
+fn zoom_pan(app: AppHandle, dx: f32, dy: f32) {
+    if dx.is_finite() && dy.is_finite() { send_mag(&app, MagCmd::Pan { dx, dy }); }
+}
+
+#[tauri::command]
+fn zoom_hold(app: AppHandle, on: bool) { send_mag(&app, MagCmd::ViewHold(on)); }
+
+#[tauri::command]
 fn zoom_exit(app: AppHandle) {
     send_mag(&app, MagCmd::Stop);
 }
@@ -681,34 +535,6 @@ fn grab_screen(state: tauri::State<'_, AppState>, index: usize) -> Result<tauri:
     Ok(tauri::ipc::Response::new(out))
 }
 
-/// 스크린샷 PNG를 `사진\OniScreen` 폴더에 저장하고 경로를 돌려준다. 파일명은 안전한 문자만 허용한다.
-#[tauri::command]
-fn save_png(request: tauri::ipc::Request<'_>) -> Result<String, String> {
-    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
-        return Err("PNG 데이터가 없습니다".into());
-    };
-    if data.len() < 8 || data.len() > 64 * 1024 * 1024 || &data[1..4] != b"PNG" {
-        return Err("PNG가 아닙니다".into());
-    }
-    let name = request
-        .headers()
-        .get("x-name")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("OniScreen.png")
-        .to_string();
-    let safe: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')).collect();
-    if safe.is_empty() || !safe.ends_with(".png") {
-        return Err("파일 이름이 올바르지 않습니다".into());
-    }
-    let dir = std::path::PathBuf::from(std::env::var("USERPROFILE").map_err(|e| e.to_string())?)
-        .join("Pictures")
-        .join("OniScreen");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(safe);
-    std::fs::write(&path, data).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
-}
-
 /// 스크린샷을 클립보드로 복사. 본문 = RGBA, 헤더 x-w / x-h = 크기.
 #[tauri::command]
 fn copy_rgba(request: tauri::ipc::Request<'_>) -> Result<(), String> {
@@ -724,39 +550,7 @@ fn copy_rgba(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     }
 }
 
-/// 녹화 시작/종료. `mon` = 녹화할 모니터(생략하면 마지막으로 작업한 화면).
-#[tauri::command]
-fn record_toggle(app: AppHandle, on: bool, mon: Option<usize>) {
-    if on {
-        let st = app.state::<AppState>();
-        *st.ink.lock().unwrap() = None; // 이전 녹화의 필기 레이어가 남지 않게
-        let n = st.mons.lock().unwrap().len();
-        let idx = mon.filter(|i| *i < n).unwrap_or_else(|| {
-            let c = st.content.load(Ordering::Relaxed);
-            if c < n { c } else { 0 }
-        });
-        send_mag(&app, MagCmd::RecStart(idx));
-    } else {
-        send_mag(&app, MagCmd::RecStop);
-    }
-}
-
-/// 오버레이의 필기 레이어를 녹화 합성용으로 보관한다. 본문 = RGBA, 헤더 x-w / x-h / x-m.
-#[tauri::command]
-fn record_ink(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
-    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
-        return Err("데이터 없음".into());
-    };
-    let n = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<i32>().ok());
-    let (w, h, m) = (n("x-w").ok_or("w")?, n("x-h").ok_or("h")?, n("x-m").ok_or("m")?);
-    if w <= 0 || h <= 0 || m < 0 || data.len() != (w as usize) * (h as usize) * 4 || data.len() > 134_217_728 {
-        return Err("잘못된 레이어 크기".into());
-    }
-    *app.state::<AppState>().ink.lock().unwrap() = Some(InkFrame { m: m as usize, w, h, rgba: data.clone() });
-    Ok(())
-}
-
-/// 지금 작업 중인 화면(마지막으로 마우스를 두고 쉰 모니터). 스크린샷·녹화·보드의 기본 대상.
+/// 지금 작업 중인 화면(마지막으로 마우스를 두고 쉰 모니터). 스크린샷·보드의 기본 대상.
 #[tauri::command]
 fn content_monitor(app: AppHandle) -> usize {
     let st = app.state::<AppState>();
@@ -771,17 +565,11 @@ fn set_zoom_target(state: tauri::State<'_, AppState>, index: i32) {
     state.target.store(if index < 0 { NONE } else { index as usize }, Ordering::Relaxed);
 }
 
-/// 확대 동작 설정: 휠 단계, 화면 고정 키(space / shift / ctrl / f8 / none).
+/// 확대 휠 설정. 고정 키는 포커스를 가진 오버레이에서 처리한다.
 #[tauri::command]
-fn set_zoom_prefs(state: tauri::State<'_, AppState>, ladder: bool, step: f32, hold: String) {
-    let vk = match hold.as_str() {
-        "space" => 0x20,
-        "shift" => 0x10,
-        "ctrl" => 0x11,
-        "f8" => 0x77,
-        _ => 0,
-    };
-    state.hold_vk.store(vk, Ordering::Relaxed);
+fn set_zoom_prefs(app: AppHandle, ladder: bool, step: f32, live: bool) {
+    let state = app.state::<AppState>();
+    if state.live_zoom.swap(live, Ordering::Relaxed) != live { send_mag(&app, MagCmd::ViewHold(false)); }
     state.wheel_ladder.store(ladder, Ordering::Relaxed);
     state.wheel_step.store(step.clamp(0.1, 2.0).to_bits(), Ordering::Relaxed);
 }
@@ -911,6 +699,7 @@ fn create_overlays(app: &AppHandle, mons: &[MonRect]) -> tauri::Result<()> {
             win::exclude_from_capture(h);
         }
         w.show()?;
+        set_passthrough(&w, true); // Showing the webview can rewrite extended window styles.
         // A DPI change while moving between monitors can rescale the window; pin it again.
         let w2 = w.clone();
         thread::spawn(move || {
@@ -985,6 +774,12 @@ fn spawn_pointer_feed(app: AppHandle) {
 
 
 fn main() {
+    // Hold the named mutex until shutdown: two topmost toolbars would fight for Z order.
+    let _instance = match win::single_instance() {
+        Ok(Some(instance)) => instance,
+        Ok(None) => return,
+        Err(error) => { eprintln!("Cannot acquire application instance: {error}"); return; }
+    };
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState::default())
@@ -1003,14 +798,15 @@ fn main() {
             zoom_step,
             zoom_wheel,
             grab_screen,
-            save_png,
+            updates::check_update,
+            updates::download_update,
             copy_rgba,
-            record_toggle,
-            record_ink,
             content_monitor,
             grab_keys,
             zoom_exit,
             zoom_freeze,
+            zoom_pan,
+            zoom_hold,
             resize_toolbar,
             open_settings,
             quit
@@ -1079,50 +875,42 @@ mod tests {
         assert_eq!((r0.0, r0.1), (1920, 0));
     }
 
-    #[test]
-    fn ink_blend_is_alpha_over_bgra() {
-        // 2x1 프레임: 파랑(BGRA) 두 픽셀. 필기: 첫 픽셀 불투명 빨강, 둘째 50% 흰색
-        let mut px = vec![255, 0, 0, 255, 255, 0, 0, 255];
-        let ink = InkFrame { m: 0, w: 2, h: 1, rgba: vec![255, 0, 0, 255, 255, 255, 255, 128] };
-        blend_ink(&mut px, 2, 1, &ink);
-        assert_eq!(&px[0..3], &[0, 0, 255]); // 빨강 (BGR)
-        assert!(px[3] == 255);
-        assert_eq!(px[4], 255); // 파랑 위 50% 흰색 → B 255
-        assert!(px[5] > 120 && px[5] < 136, "G={}", px[5]);
-        assert!(px[6] > 120 && px[6] < 136, "R={}", px[6]);
-    }
-
-    #[test]
-    fn ink_smaller_than_frame_is_ignored() {
-        let mut px = vec![9u8; 4 * 4];
-        let ink = InkFrame { m: 0, w: 1, h: 1, rgba: vec![0, 0, 0, 255] };
-        blend_ink(&mut px, 2, 2, &ink);
-        assert!(px.iter().all(|b| *b == 9));
-    }
 }
 
 #[cfg(test)]
-mod toolbar_approach_tests {
+mod anchor_tests {
     use super::*;
-
     #[test]
-    fn distance_is_zero_inside_and_grows_outside() {
-        let r = (100, 100, 300, 160);
-        assert_eq!(dist_to_rect(150, 120, r), 0.0);
-        assert_eq!(dist_to_rect(100, 100, r), 0.0);
-        assert_eq!(dist_to_rect(50, 130, r), 50.0);
-        assert!((dist_to_rect(60, 60, r) - 40f32.hypot(40.0)).abs() < 1e-3);
+    fn live_zoom_follows_pointer_without_alignment_drift() {
+        for (w, h) in [(1920, 1080), (2560, 1440)] {
+            for z in [1.25, 2.0, 3.75, 6.0] {
+                let mut prev = (-1, -1);
+                for fraction in [0.0, 0.1, 0.5, 0.9, 0.999] {
+                    let p = (w as f32 * fraction, h as f32 * fraction);
+                    let off = follow_offset((w, h), p, z);
+                    let (r, _) = source_rect((-w, 0, w, h), off, z);
+                    let sx = w as f32 / (r.2 - r.0) as f32;
+                    let sy = h as f32 / (r.3 - r.1) as f32;
+                    assert!(((p.0 - off.0 as f32) * sx - p.0).abs() <= sx / 2.0 + 0.01);
+                    assert!(((p.1 - off.1 as f32) * sy - p.1).abs() <= sy / 2.0 + 0.01);
+                    assert!(off.0 >= prev.0 && off.1 >= prev.1);
+                    prev = off;
+                }
+            }
+        }
     }
 
     #[test]
-    fn view_slows_down_near_toolbar_and_stops_on_it() {
-        assert_eq!(approach_weight(0.0, 160.0), 0.0);
-        assert_eq!(approach_weight(80.0, 160.0), 0.5);
-        assert_eq!(approach_weight(400.0, 160.0), 1.0);
-        // 툴바 위: 목표가 멀어도 그 자리에 남는다
-        assert_eq!(step_toward((10, 10), (500, 500), 0.0), (10, 10));
-        // 절반 속도, 완전 속도
-        assert_eq!(step_toward((0, 0), (100, 40), 0.5), (50, 20));
-        assert_eq!(step_toward((0, 0), (100, 40), 1.0), (100, 40));
+    fn zoom_preserves_point_under_pointer() {
+        let anchor = (240.0, 300.0);
+        let off = anchored_offset((0, 0), anchor, 1.0, 2.0);
+        assert_eq!(off, (120, 150));
+        assert_eq!(((240 - off.0) * 2, (300 - off.1) * 2), (240, 300));
+    }
+    #[test]
+    fn pointer_motion_at_fixed_scale_does_not_pan() {
+        for anchor in [(0.0, 0.0), (800.0, 400.0), (1919.0, 1079.0)] {
+            assert_eq!(anchored_offset((120, 150), anchor, 2.0, 2.0), (120, 150));
+        }
     }
 }

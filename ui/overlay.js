@@ -7,7 +7,7 @@
  * ZoomIt(PowerToys)에서 옮겨온 그리기 규칙
  *  - 펜/형광펜 + Shift = 선, Ctrl = 사각형, Tab = 타원, Ctrl+Shift = 화살표 (마우스를 누른 채 보조키)
  *  - 형광펜 도형은 반투명으로 채운다
- *  - Ctrl + 휠 = 펜 굵기, 화이트보드/칠판, 화면(확대 포함) 복사·저장 */
+ *  - Ctrl + 휠 = 펜 굵기, 화이트보드/칠판, 화면(확대 포함) 복사 */
 (async () => {
   const m = Number(T.window.getCurrentWindow().label.split('-')[1]);
   const mon = await invoke('monitor_rect', { index: m });
@@ -26,7 +26,7 @@
 
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   // 확대는 Rust가 그린다. 오버레이(잉크)는 확대되지 않으므로 같은 뷰로 직접 변환해 그린다.
-  // 화면 = (원본 - o) * z. 따라가는 중에는 커서 아래 원본 = 실제 좌표라서 클릭이 그대로 맞는다.
+  // 화면 = (원본 - o) * z. 확대 화면의 클릭을 같은 뷰의 원본 좌표로 역변환한다.
   const view = { active: false, z: 1, ox: 0, oy: 0 };
   const toSrc = (x, y) => (view.active ? [x / view.z + view.ox, y / view.z + view.oy] : [x, y]);
   const zf = () => (view.active ? view.z : 1);
@@ -121,27 +121,10 @@
     strokes.forEach((s) => drawStroke(ctx, s));
     if (cur) drawStroke(ctx, cur);
   }
-  // 녹화 중에는 화면에 보이는 필기 레이어를 Rust로 보내 녹화 프레임에 합성한다(변경이 있을 때만, 초당 15회 이하).
-  let recording = false, inkChanged = false, lastSend = 0, sentNonEmpty = false;
-  function pushInk() {
-    inkChanged = false; lastSend = performance.now();
-    const empty = !strokes.length && !cur && !tool.board;
-    if (empty && !sentNonEmpty) return;
-    sentNonEmpty = !empty;
-    const px = ctx.getImageData(0, 0, W, H).data;
-    invoke('record_ink', new Uint8Array(px.buffer), { headers: { 'x-w': String(W), 'x-h': String(H), 'x-m': String(m) } }).catch(() => {});
-  }
   (function loop() {
-    if (dirty) { dirty = false; render(); inkChanged = true; }
-    if (recording && inkChanged && performance.now() - lastSend > 66) pushInk();
+    if (dirty) { dirty = false; render(); }
     requestAnimationFrame(loop);
   })();
-  listen('record-state', ({ payload }) => {
-    const was = recording;
-    recording = !!payload.active;
-    if (recording && !was) { inkChanged = true; sentNonEmpty = false; }
-    if (!recording && was) sentNonEmpty = false;
-  });
 
   // ───── 지우개 판정 ─────
   const distSeg = (px, py, ax, ay, bx, by) => {
@@ -181,11 +164,20 @@
   };
 
   // ───── 입력 모드 (클릭 통과 on/off) ─────
-  let interactive = false;
+  let interactive = null, syncingInteractive = false;
   async function syncInteractive() {
-    // 보드가 떠 있으면 아래 앱이 보이지 않으므로 클릭이 아래로 새지 않게 입력을 받는다.
-    const want = frozen() || !!tool.board;
-    if (want !== interactive) { interactive = want; await invoke('set_interactive', { index: m, on: want }); }
+    if (syncingInteractive) return;
+    syncingInteractive = true;
+    try {
+      // Serialize native changes; apply the newest mode after any pending change.
+      while (true) {
+        const want = view.active || frozen() || !!tool.board;
+        if (want === interactive) break;
+        await invoke('set_interactive', { index: m, on: want });
+        interactive = want;
+      }
+    } catch (error) { interactive = null; console.error('Overlay input sync failed', error); }
+    finally { syncingInteractive = false; }
   }
 
   // ───── 토스트 / 펜 굵기 표시 ─────
@@ -208,27 +200,32 @@
 
   // ───── 텍스트 입력 ─────
   // 입력하는 동안만 오버레이가 포커스를 받는다(그 외에는 툴바가 항상 위에 있도록 포커스를 갖지 않음).
-  const tbox = $('#tbox');
+  const tbox = $('#tbox'), textEditor = $('#textEditor'), textResize = $('#textResize');
+  let textDrag = null;
   let editing = null; // { x, y } 원본 좌표
   async function openText(e) {
     commitText();
     const [x, y] = local(e);
-    editing = { x, y };
+    editing = { x, y, size: S.textSize, color: tool.color };
+    textEditor.hidden = false; $('#textSizeMenu').open = false; $('#textFontSize').value = editing.size;
+    $('#textSizeLabel').textContent = `${editing.size}px`;
     tbox.textContent = '';
-    tbox.style.cssText = `display:block;left:${e.clientX}px;top:${e.clientY}px;font-size:${S.textSize}px;color:${tool.color}`;
+    tbox.style.cssText = `display:block;font-size:${S.textSize}px;color:${tool.color}`;
+    positionText();
     emit('text-editing', { on: true });
     await invoke('focus_overlay', { index: m, on: true });
-    tbox.focus();
+    if (editing) tbox.focus({ preventScroll: true });
   }
   function closeText(commit) {
     if (!editing) return;
-    const { x, y } = editing; editing = null;
+    const { x, y, size, color } = editing; editing = null;
+    textDrag = null; textEditor.hidden = true;
     const text = tbox.innerText.replace(/\n+$/, '');
     tbox.style.display = 'none'; tbox.textContent = '';
     emit('text-editing', { on: false });
-    invoke('focus_overlay', { index: m, on: false });
+    invoke('focus_overlay', { index: m, on: view.active });
     if (commit && text.trim()) {
-      const t = { tool: 'text', color: tool.color, size: S.textSize * dpr / zf(), x, y, text };
+      const t = { tool: 'text', color, size: size * dpr / zf(), x, y, text };
       strokes.push(t); undoStack.push({ add: t }); ownsInk = true; emit('ink-owner', { m }); dirty = true;
     }
   }
@@ -237,11 +234,63 @@
     e.stopPropagation();
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); commitText(); }
   });
-  tbox.addEventListener('blur', () => setTimeout(commitText, 0));
+  tbox.addEventListener('blur', () => { const current = editing; setTimeout(() => { if (editing === current && !textEditor.contains(document.activeElement)) commitText(); }, 0); });
   listen('text-cancel', () => closeText(false));
+  for (const id of ['#textDelete']) {
+    $(id).addEventListener('pointerdown', e => e.preventDefault());
+  }
+  $('#textDelete').addEventListener('click', () => closeText(false));
+  function resizeText(size) {
+    if (!editing) return;
+    editing.size = clamp(Math.round(size), 14, 144);
+    tbox.style.fontSize = `${editing.size}px`;
+    $('#textFontSize').value = editing.size;
+    $('#textSizeLabel').textContent = `${editing.size}px`;
+  }
+  function saveTextSize() {
+    if (!editing) return;
+    S = { ...loadSettings(), textSize: editing.size }; saveSettings(S);
+  }
+  $('#textFontSize').addEventListener('input', e => { resizeText(Number(e.target.value)); saveTextSize(); });
+  textResize.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !editing) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = tbox.getBoundingClientRect();
+    textDrag = { x: e.clientX, y: e.clientY, w: Math.max(r.width, 40), h: Math.max(r.height, 28), size: editing.size };
+    textResize.setPointerCapture(e.pointerId);
+  });
+  textResize.addEventListener('pointermove', e => {
+    if (!textDrag || !editing) return;
+    const dx = (e.clientX - textDrag.x) / textDrag.w, dy = (e.clientY - textDrag.y) / textDrag.h;
+    resizeText(textDrag.size * (1 + (Math.abs(dx) > Math.abs(dy) ? dx : dy)));
+  });
+  const finishTextResize = () => { if (!textDrag) return; textDrag = null; saveTextSize(); tbox.focus({ preventScroll: true }); };
+  textResize.addEventListener('pointerup', finishTextResize);
+  textResize.addEventListener('pointercancel', finishTextResize);
+  textResize.addEventListener('lostpointercapture', finishTextResize);
+  textResize.addEventListener('keydown', e => {
+    if (!editing || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault(); e.stopPropagation();
+    resizeText(editing.size + (['ArrowUp', 'ArrowRight'].includes(e.key) ? 2 : -2)); saveTextSize();
+  });
 
   // ───── 포인터 이벤트(필기) ─────
-  const local = (e) => toSrc(e.clientX * dpr, e.clientY * dpr);
+  const local = (e) => {
+    const r = cv.getBoundingClientRect();
+    return toSrc((e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height);
+  };
+  function positionText() {
+    if (!editing) return;
+    const r = cv.getBoundingClientRect();
+    const x = r.left + (editing.x - view.ox) * zf() * r.width / W;
+    const y = r.top + (editing.y - view.oy) * zf() * r.height / H;
+    textEditor.style.left = `${x}px`;
+    textEditor.style.top = `${y}px`;
+    textEditor.classList.toggle('actions-below', y < 40);
+    tbox.style.maxWidth = `${Math.max(24, innerWidth - x - 4)}px`;
+  }
+  let pan = null, held = false;
+
   let lastPtr = { tab: false };
 
   // 보조키로 도형 결정: Ctrl+Shift = 화살표, Ctrl = 사각형, Shift = 선, Tab = 타원. 도구가 '도형'이면 고른 도형.
@@ -257,6 +306,7 @@
 
   cv.addEventListener('pointerdown', (e) => {
     const [x, y] = local(e);
+    if (e.button === 1 && view.active && S.zoomMode === 'fixed') { e.preventDefault(); commitText(); pan = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); return; }
     if (e.button === 2) { invoke('zoom_exit'); return; }
     if (e.button !== 0 || !frozen()) return;
     if (tool.id === 'text') { e.preventDefault(); openText(e); return; }
@@ -271,6 +321,7 @@
     dirty = true;
   });
   cv.addEventListener('pointermove', (e) => {
+    if (pan) { invoke('zoom_pan', { dx: (e.clientX - pan[0]) * dpr, dy: (e.clientY - pan[1]) * dpr }); pan = [e.clientX, e.clientY]; return; }
     const [x, y] = local(e);
     if (cur) {
       if (cur.kind === 'free') {
@@ -280,6 +331,7 @@
     } else if (erasing) eraseAt(x, y);
   });
   const endStroke = () => {
+    pan = null;
     if (cur) {
       const degenerate = cur.kind !== 'free' && cur.kind !== 'line' && cur.kind !== 'arrow' && Math.hypot(cur.b[0] - cur.a[0], cur.b[1] - cur.a[1]) < 2;
       if (!degenerate) { strokes.push(cur); undoStack.push({ add: cur }); }
@@ -300,18 +352,25 @@
 
   listen('zoom-changed', ({ payload: p }) => {
     const mine = p.active && p.m === m;
+    const entering = mine && !view.active;
+    const leaving = !mine && view.active;
     view.active = mine; view.z = mine ? p.ze : 1;
-    if (!mine) { view.ox = view.oy = 0; }
+    if (!mine) { view.ox = view.oy = 0; held = false; }
+    syncInteractive();
+    if (entering || leaving) invoke('focus_overlay', { index: m, on: mine || !!editing });
+    if (entering) toast(S.zoomMode === 'fixed' ? '줌 · 가운데 버튼 드래그로 이동 · Esc 종료' : '라이브 줌 · 마우스 추적 · 고정 키로 잠금 · Esc 종료');
+    positionText();
     dirty = true;
   });
   listen('zoom-view', ({ payload: p }) => {
     view.ox = p.ox; view.oy = p.oy;
     if (view.active && p.ze) view.z = p.ze; // 애니메이션 중에도 잉크가 화면과 같은 배율로 따라간다
+    positionText();
     dirty = true;
   });
 
   // ───── 상태/잉크 명령 ─────
-  listen('state', ({ payload }) => {
+  await listen('state', ({ payload }) => {
     if (payload.tool !== 'text') commitText();
     tool.id = payload.tool; tool.color = payload.color;
     tool.shape = payload.shape || 'rect'; tool.hlShape = !!payload.hlShape; tool.board = payload.board && payload.boardMon === m ? payload.board : null;
@@ -344,10 +403,6 @@
     strokes.forEach((s) => drawStroke(g, s));
     return out;
   }
-  const stamp = () => {
-    const d = new Date(), p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-  };
   listen('shot', async ({ payload }) => {
     if (payload.m !== m) return;
     try {
@@ -356,17 +411,25 @@
         const px = c.getContext('2d').getImageData(0, 0, W, H).data;
         await invoke('copy_rgba', new Uint8Array(px.buffer), { headers: { 'x-w': String(W), 'x-h': String(H) } });
         toast('스크린샷을 클립보드에 복사했습니다');
-      } else {
-        const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-        const path = await invoke('save_png', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-name': `OniScreen-${stamp()}.png` } });
-        toast(`저장했습니다 · ${path}`);
       }
     } catch (err) { toast(`스크린샷 실패: ${err}`); }
   });
   listen('toast', ({ payload }) => { if (payload.m === m) toast(payload.msg); });
 
   // ───── 키 입력 → 툴바로 전달 ─────
-  addEventListener('keydown', (e) => { if (!editing) emit('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey }); });
+  const holdCode = () => ({ space: 'Space', f8: 'F8', shift: 'ShiftLeft', ctrl: 'ControlLeft' }[S.holdKey]);
+  addEventListener('keydown', (e) => {
+    if (editing) return;
+    const code = e.code.replace('Right', 'Left');
+    if (view.active && S.zoomMode === 'live' && code === holdCode()) {
+      e.preventDefault(); e.stopPropagation();
+      if (!e.repeat) { held = !held; invoke('zoom_hold', { on: held }); toast(held ? '화면 이동 잠금' : S.zoomMode === 'fixed' ? '줌 · 가운데 버튼 드래그로 이동' : '라이브 줌 · 마우스 추적'); }
+      return;
+    }
+    if (view.active && e.code === 'Space') { e.preventDefault(); return; }
+    emit('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey });
+  });
+  cv.addEventListener('auxclick', e => e.preventDefault());
 
   // ───── 포인터 후광 + 클릭 파문 ─────
   let prev = { l: false, r: false };
@@ -395,8 +458,8 @@
       halo.style.transform = `translate(${cx}px,${cy}px)`; halo.classList.toggle('on', show);
       penHud.style.transform = `translate(${cx}px,${cy}px)`;
       if (S.ripple) {
-        if (p.l && !prev.l) ripple(cx, cy, S.haloColor);
-        if (p.r && !prev.r) ripple(cx, cy, RIPPLE_RIGHT);
+        if (p.l && !prev.l) ripple(cx, cy, S.rippleColor);
+        if (p.r && !prev.r) ripple(cx, cy, S.rippleColor);
       }
     }
     prev = { l: p.l, r: p.r };
@@ -405,8 +468,13 @@
     applyHalo();
   });
 
-  addEventListener('storage', () => { S = loadSettings(); applyHalo(); });
+  addEventListener('storage', () => {
+    const mode = S.zoomMode; S = loadSettings();
+    if (mode !== S.zoomMode) { held = false; invoke('zoom_hold', { on: false }); }
+    applyHalo();
+  });
   addEventListener('resize', fit);
   fit();
+  await syncInteractive();
   emit('state-request');
 })();
