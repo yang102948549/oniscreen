@@ -202,32 +202,43 @@
   // 입력하는 동안만 오버레이가 포커스를 받는다(그 외에는 툴바가 항상 위에 있도록 포커스를 갖지 않음).
   const tbox = $('#tbox'), textEditor = $('#textEditor'), textResize = $('#textResize');
   let textDrag = null;
+  let textMove = null;
   let editing = null; // { x, y } 원본 좌표
   async function openText(e) {
     commitText();
     stopFollowing();
     const [x, y] = local(e);
-    editing = { x, y, size: S.textSize, color: tool.color };
+    const existing = [...strokes].reverse().find(s => s.tool === 'text' && hits(s, x, y, 4 * dpr / zf()));
+    const index = existing ? strokes.indexOf(existing) : -1;
+    if (existing) { strokes.splice(index, 1); dirty = true; }
+    editing = existing ? { x: existing.x, y: existing.y, size: existing.size * zf() / dpr, color: existing.color, original: existing, index } : { x, y, size: S.textSize, color: tool.color };
     textEditor.hidden = false; $('#textSizeMenu').open = false; $('#textFontSize').value = editing.size;
     $('#textSizeLabel').textContent = `${editing.size}px`;
-    tbox.textContent = '';
-    tbox.style.cssText = `display:block;font-size:${S.textSize}px;color:${tool.color}`;
+    tbox.textContent = existing?.text || '';
+    tbox.style.cssText = `display:block;font-size:${editing.size}px;color:${editing.color}`;
+    $('#textFontSize').value = editing.size; $('#textSizeLabel').textContent = `${Math.round(editing.size)}px`;
     positionText();
     emit('text-editing', { on: true });
     await invoke('focus_overlay', { index: m, on: true });
     if (editing) tbox.focus({ preventScroll: true });
   }
-  function closeText(commit) {
+  function closeText(commit, discard = false) {
     if (!editing) return;
-    const { x, y, size, color } = editing; editing = null;
-    textDrag = null; textEditor.hidden = true;
+    const { x, y, size, color, original, index } = editing; editing = null;
+    textDrag = textMove = null; textEditor.hidden = true;
     const text = tbox.innerText.replace(/\n+$/, '');
     tbox.style.display = 'none'; tbox.textContent = '';
     emit('text-editing', { on: false });
     invoke('focus_overlay', { index: m, on: view.active });
     if (commit && text.trim()) {
       const t = { tool: 'text', color, size: size * dpr / zf(), x, y, text };
-      strokes.push(t); undoStack.push({ add: t }); ownsInk = true; emit('ink-owner', { m }); dirty = true;
+      if (original) { strokes.splice(index, 0, t); undoStack.push({ replace: { before: original, after: t } }); }
+      else { strokes.push(t); undoStack.push({ add: t }); }
+      ownsInk = true; emit('ink-owner', { m }); dirty = true;
+    } else if (original) {
+      if (!commit && !discard) strokes.splice(index, 0, original);
+      else undoStack.push({ erase: [original] });
+      dirty = true;
     }
   }
   const commitText = () => closeText(true);
@@ -240,7 +251,7 @@
   for (const id of ['#textDelete']) {
     $(id).addEventListener('pointerdown', e => e.preventDefault());
   }
-  $('#textDelete').addEventListener('click', () => closeText(false));
+  $('#textDelete').addEventListener('click', () => closeText(false, true));
   function resizeText(size) {
     if (!editing) return;
     editing.size = clamp(Math.round(size), 14, 144);
@@ -274,6 +285,23 @@
     e.preventDefault(); e.stopPropagation();
     resizeText(editing.size + (['ArrowUp', 'ArrowRight'].includes(e.key) ? 2 : -2)); saveTextSize();
   });
+  const moveHandle = $('#textMove');
+  moveHandle.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !editing) return;
+    e.preventDefault(); e.stopPropagation();
+    const [x, y] = local(e);
+    textMove = { x, y, originX: editing.x, originY: editing.y };
+    moveHandle.setPointerCapture(e.pointerId);
+  });
+  moveHandle.addEventListener('pointermove', e => {
+    if (!textMove || !editing) return;
+    const [x, y] = local(e);
+    editing.x = clamp(textMove.originX + x - textMove.x, 0, W - 16 * dpr / zf());
+    editing.y = clamp(textMove.originY + y - textMove.y, 0, H - editing.size * dpr / zf());
+    positionText();
+  });
+  const finishTextMove = () => { if (!textMove) return; textMove = null; tbox.focus({ preventScroll: true }); };
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) moveHandle.addEventListener(event, finishTextMove);
 
   // ───── 포인터 이벤트(필기) ─────
   const local = (e) => {
@@ -381,10 +409,12 @@
   listen('ink-owner', ({ payload }) => { ownsInk = payload.m === m; });
   listen('ink', ({ payload }) => {
     if (payload.op === 'clear') {
+      commitText(); // Include the text currently being edited in clear and undo.
       if (strokes.length) { undoStack.push({ clear: strokes.splice(0) }); dirty = true; }
     } else if (payload.op === 'undo' && ownsInk) {
       const op = undoStack.pop(); if (!op) return;
       if (op.add) { const i = strokes.indexOf(op.add); if (i >= 0) strokes.splice(i, 1); }
+      else if (op.replace) { const i = strokes.indexOf(op.replace.after); if (i >= 0) strokes.splice(i, 1, op.replace.before); }
       else strokes.push(...(op.erase || op.clear));
       dirty = true;
     }

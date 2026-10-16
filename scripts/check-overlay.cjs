@@ -6,6 +6,7 @@ const vm = require('node:vm');
   let frame; const drawn = [];
   const ctx = new Proxy({}, { get: (o, k) => o[k] || (() => {}) });
   ctx.fillText = (text, x, y) => drawn.push({ text, x, y, font: ctx.font });
+  ctx.measureText = text => ({ width: text.length * 20 });
   const elements = {};
   function element(id) {
     return elements[id] ||= {
@@ -71,7 +72,31 @@ const vm = require('node:vm');
   assert.equal(drawn.at(-1).x, 325);
   assert.equal(drawn.at(-1).y, 200);
   assert(drawn.at(-1).font.includes('33px'), 'committed font must preserve resized display size at 150% DPI and 2x zoom');
+  await element('#ink').handlers.pointerdown(click);
+  await new Promise(setImmediate);
+  assert.equal(element('#tbox').textContent, '크기 확인', 'clicking existing text selects it for editing');
+  const move = element('#textMove');
+  move.handlers.pointerdown({ ...click, pointerId: 3, stopPropagation() {} });
+  move.handlers.pointermove({ clientX: 380, clientY: 240 });
+  move.handlers.pointerup();
+  assert.equal(element('#textEditor').style.left, '380px');
+  assert.equal(element('#textEditor').style.top, '240px');
+  element('#tbox').handlers.keydown({ key: 'Enter', preventDefault() {}, stopPropagation() {} });
+  frame();
+  assert.equal(drawn.at(-1).x, 385, 'moving 80 CSS px at 150% DPI and 2x zoom moves 60 source px');
+  assert.equal(drawn.at(-1).y, 230);
+  events.ink({ payload: { op: 'undo' } }); frame();
+  assert.equal(drawn.at(-1).x, 325, 'undo restores original text position');
+  assert.equal(drawn.at(-1).y, 200);
 
+  await element('#ink').handlers.pointerdown(click);
+  await new Promise(setImmediate);
+  events.ink({ payload: { op: 'clear' } });
+  assert.equal(element('#textEditor').hidden, true, 'clear must close and clear the active text editor');
+  const clearedCount = drawn.length; frame();
+  assert.equal(drawn.length, clearedCount, 'clear must remove the text currently being edited');
+  events.ink({ payload: { op: 'undo' } }); frame();
+  assert.equal(drawn.at(-1).text, '크기 확인', 'undo clear restores the edited text');
 
   globals.keydown(key);
   assert.equal(calls.filter(([n]) => n === 'zoom_follow').at(-1)[1].on, true);

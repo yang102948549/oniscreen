@@ -20,16 +20,16 @@ $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 $g.Clear([System.Drawing.Color]::Transparent)
 
-# ONI toggle silhouette: blue pill, white thumb and a short white magnifier handle.
+# Rounded square with generous corners and a white magnifier.
 $g.ScaleTransform([single]($size / 22.0), [single]($size / 22.0))
 $blueBrush = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml('#007AFF'))
-$whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-$handle = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [single]1.65)
+$lens = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [single]2)
+$handle = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [single]2.4)
 $handle.StartCap = $handle.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$g.FillPath($blueBrush, (New-RoundRect 1.375 5.5 19.25 11 5.5))
-$g.FillEllipse($whiteBrush, [single]9.503125, [single]6.003125, [single]8.59375, [single]8.59375)
-$g.DrawLine($handle, [single]15.5, [single]12.9, [single]17.1, [single]15.6)
-$blueBrush.Dispose(); $whiteBrush.Dispose(); $handle.Dispose()
+$g.FillPath($blueBrush, (New-RoundRect 1 1 20 20 6.5))
+$g.DrawEllipse($lens, [single]5.5, [single]5.25, [single]8.5, [single]8.5)
+$g.DrawLine($handle, [single]12.8, [single]12.55, [single]17, [single]16.75)
+$blueBrush.Dispose(); $lens.Dispose(); $handle.Dispose()
 
 $g.Dispose()
 $out = Join-Path (Split-Path -Parent $PSScriptRoot) 'icon-source.png'

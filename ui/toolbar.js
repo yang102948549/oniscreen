@@ -35,6 +35,7 @@ function render() {
   $('#palette').setAttribute('aria-label', !st.tool ? '포인터 색상' : st.tool === 'text' ? '텍스트 색상' : '펜 색상');
   stack.classList.toggle('pointer-mode', !st.tool && !st.zoomActive);
   stack.classList.toggle('zoom-mode', st.zoomActive);
+  stack.classList.toggle('eraser-mode', st.tool === 'eraser');
   const activeButton = st.tool === 'shape' ? document.querySelector(`#shapes [data-shape="${st.shape}"]`) : st.tool ? document.querySelector(`#tools [data-tool="${st.tool}"]`) : st.zoomActive ? $('#zoomFixed') : ptrBtn;
   $('#restore').replaceChildren(activeButton.querySelector('svg').cloneNode(true));
   $('#restore').setAttribute('aria-label', `${activeButton.getAttribute('aria-label')} · 툴바 펼치기`);
@@ -152,6 +153,7 @@ $('#zoomRange').oninput = e => {
 $('#zoomRange').onchange = () => { zoomRangeDragging = false; render(); };
 $('#zoomRange').addEventListener('pointercancel', () => { zoomRangeDragging = false; render(); });
 $('#undo').onclick = () => emit('ink', { op: 'undo' });
+$('#eraseSelected').onclick = () => { st.tool = 'eraser'; render(); pushState(); };
 $('#clear').onclick = () => emit('ink', { op: 'clear' });
 $('#gear').onclick = () => invoke('open_settings');
 $('#quit').onclick = () => invoke('quit');
@@ -160,7 +162,30 @@ $('#fold').onclick = () => {
   if (toolbarFolded) popupMenus.forEach(menu => { menu.open = false; });
   render(); resizeToolbar();
 };
-$('#restore').onclick = () => { toolbarFolded = false; render(); resizeToolbar(); };
+const restoreButton = $('#restore');
+let restoreDrag = null, restoreDragged = false;
+restoreButton.onclick = (e) => {
+  if (restoreDragged && e?.detail !== 0) return;
+  toolbarFolded = false; render(); resizeToolbar();
+};
+restoreButton.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  restoreDragged = false;
+  restoreDrag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  restoreButton.setPointerCapture(e.pointerId);
+});
+restoreButton.addEventListener('pointermove', e => {
+  if (!restoreDrag || e.pointerId !== restoreDrag.id ||
+      Math.hypot(e.clientX - restoreDrag.x, e.clientY - restoreDrag.y) < 5) return;
+  const id = restoreDrag.id;
+  restoreDrag = null; restoreDragged = true;
+  e.preventDefault();
+  if (restoreButton.hasPointerCapture(id)) restoreButton.releasePointerCapture(id);
+  T.window.getCurrentWindow().startDragging().catch(console.error);
+});
+for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  restoreButton.addEventListener(event, () => { restoreDrag = null; });
+}
 
 // 글자 단축키(ZoomIt): 색상 R G B O Y K W. 기본 색은 설정에서 고른다.
 const COLOR_KEY = Object.fromEntries(PEN_COLORS.map((c) => [c.key, c.hex]));
@@ -273,7 +298,7 @@ const applyNative = () => {
 };
 
 // 툴팁의 단축키 표기를 설정과 맞춘다
-const TIP_ACT = { ptrBtn: 'ptr', clear: 'clear', boardW: 'board', boardK: 'board', shotCopy: 'shot-copy', quit: 'quit' };
+const TIP_ACT = { ptrBtn: 'ptr', eraseSelected: 'eraser', clear: 'clear', boardW: 'board', boardK: 'board', shotCopy: 'shot-copy', quit: 'quit' };
 function labelKeys() {
   const set = (el, act) => { const k = el?.querySelector('.tip kbd'); if (k && settings.keys[act]) k.textContent = keyLabel(settings.keys[act]); };
   Object.entries(TIP_ACT).forEach(([id, act]) => set($('#' + id), act));

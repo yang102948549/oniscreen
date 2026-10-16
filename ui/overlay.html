@@ -37,6 +37,8 @@
   #textActions button, #textResize { color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 5px; cursor: pointer; font: 12px/22px "Malgun Gothic", sans-serif; }
   #textActions output { font: 12px/22px "Malgun Gothic", sans-serif; padding: 0 4px; }
   #textResize { position: absolute; right: -12px; bottom: -12px; width: 24px; height: 24px; padding: 0; cursor: nwse-resize; touch-action: none; border-color: var(--focus); }
+  #textMove { width: 26px; height: 26px; padding: 3px; cursor: move !important; touch-action: none; }
+  #textMove svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   #textSizeMenu { position: relative; }
   #textSizeMenu summary { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; cursor: pointer; list-style: none; }
   #textSizeMenu summary::-webkit-details-marker { display: none; }
@@ -79,7 +81,7 @@
 <div id="penhud"><i></i></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="textEditor" hidden>
-  <div id="textActions"><details id="textSizeMenu"><summary aria-label="글자 크기 선택"><output id="textSizeLabel">28px</output><span aria-hidden="true">▾</span></summary><div class="text-size-options"><input id="textFontSize" type="range" min="14" max="144" step="1" value="28" aria-label="글자 크기"></div></details></div>
+  <div id="textActions"><button id="textMove" aria-label="텍스트 드래그 이동" title="드래그로 텍스트 이동"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg></button><details id="textSizeMenu"><summary aria-label="글자 크기 선택"><output id="textSizeLabel">28px</output><span aria-hidden="true">▾</span></summary><div class="text-size-options"><input id="textFontSize" type="range" min="14" max="144" step="1" value="28" aria-label="글자 크기"></div></details></div>
   <button id="textDelete" aria-label="입력 중인 텍스트 삭제" title="삭제"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
   <div id="tbox" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="텍스트 입력" aria-multiline="true"></div>
   <button id="textResize" aria-label="드래그 또는 방향키로 글자 크기 조절" title="드래그로 글자 크기 조절">↘</button>

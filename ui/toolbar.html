@@ -72,7 +72,8 @@
   kbd { font: 500 11px/1 "Noto Sans KR", sans-serif; background: rgba(255, 255, 255, .18); border-radius: 4px; padding: 2px 4px; margin-left: 6px; }
 
   /* 접힌 현재 도구를 누르면 툴바를 펼친다. */
-  #restore { display: none; }
+  #restore { display: none; touch-action: none; cursor: grab; }
+  #restore:active { cursor: grabbing; }
   .bar.folded { border-radius: 999px; padding: 4px; }
   .bar.folded > :not(#restore) { display: none; }
   .bar.folded #restore { display: grid; }
@@ -84,6 +85,9 @@
   .zoom-mode:not(.folded) .zoom-ribbon { display: flex; align-items: center; gap: 8px; }
   .zoom-ribbon .hint { font-size: 12px; color: var(--oni-text-secondary); white-space: nowrap; }
   .zoom-ribbon #zoomRange { flex: 1; min-width: 80px; }
+  .eraser-ribbon { display: none; }
+  .eraser-mode:not(.folded) #sub, .eraser-mode:not(.folded) .zoom-ribbon { display: none; }
+  .eraser-mode:not(.folded) .eraser-ribbon { display: flex; align-items: center; gap: 8px; }
 </style>
 </head>
 <body>
@@ -101,8 +105,8 @@
 
   <div class="group" id="tools" role="group" aria-label="도구">
     <button class="btn" data-tool="pen" aria-pressed="false" aria-label="펜"><svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/></svg><span class="tip">펜<kbd>Ctrl 2</kbd></span></button>
-    <button class="btn" data-tool="hl" aria-pressed="false" aria-label="형광펜"><svg viewBox="0 0 24 24"><path d="M9 14l6-6 3 3-6 6H9z"/><path d="M4 20h7"/></svg><span class="tip">형광펜<kbd>Ctrl 3</kbd></span></button>
-    <button class="btn" data-tool="eraser" aria-pressed="false" aria-label="지우개"><svg viewBox="0 0 24 24"><path d="M8 19h11M5.5 14.5l8-8a2 2 0 0 1 3 0l2 2a2 2 0 0 1 0 3L11 19H8l-2.5-2.5a2 2 0 0 1 0-2z"/></svg><span class="tip">지우개<kbd>Ctrl 4</kbd></span></button>
+    <button class="btn" data-tool="hl" aria-pressed="false" aria-label="형광펜"><svg viewBox="0 0 24 24"><path d="m8 13 9-9 4 4-9 9H8zM8 13l4 4M8 17l-3 3H3l5-5"/><path d="M3 21h9"/></svg><span class="tip">형광펜<kbd>Ctrl 3</kbd></span></button>
+    <button class="btn" data-tool="eraser" aria-pressed="false" aria-label="지우개"><svg viewBox="0 0 24 24"><path d="m4 13 9-9a2 2 0 0 1 3 0l4 4a2 2 0 0 1 0 3l-9 9H8l-4-4a2 2 0 0 1 0-3zM10 7l8 8M8 20h13"/></svg><span class="tip">지우개<kbd>Ctrl 4</kbd></span></button>
     <button class="btn" data-tool="text" aria-pressed="false" aria-label="텍스트"><svg viewBox="0 0 24 24"><path d="M5 6V4.5h14V6M12 4.5V19.5M9 19.5h6"/></svg><span class="tip">텍스트<kbd>Ctrl 5</kbd></span></button>
   </div>
 
@@ -114,7 +118,6 @@
   <div class="sep"></div>
 
   <button class="btn" id="undo" aria-label="실행 취소"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 8h-3"/></svg><span class="tip">실행 취소<kbd>Ctrl Z</kbd></span></button>
-  <button class="btn danger" id="clear" aria-label="모두 지우기"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg><span class="tip">모두 지우기<kbd>Ctrl 7</kbd></span></button>
   <button class="btn" id="gear" aria-label="설정"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span class="tip">설정</span></button>
 
   <div class="sep"></div>
@@ -122,6 +125,11 @@
   <button class="btn keep danger" id="quit" aria-label="종료"><svg viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M7 6.5a8 8 0 1 0 10 0"/></svg><span class="tip">종료<kbd>Ctrl Alt Q</kbd></span></button>
 </div>
 
+<div class="bar eraser-ribbon" role="toolbar" aria-label="지우개 옵션">
+  <span class="lbl">지우개</span>
+  <button class="btn wide" id="eraseSelected" aria-label="선택 지우기" aria-pressed="true">선택 지우기<span class="tip">선택 지우기<kbd>Ctrl 4</kbd></span></button>
+  <button class="btn wide danger" id="clear" aria-label="모두 지우기">모두 지우기<span class="tip">모두 지우기<kbd>Ctrl Shift 4</kbd></span></button>
+</div>
 <div class="bar zoom-ribbon" role="toolbar" aria-label="화면 확대 옵션">
   <span class="lbl">화면 확대</span>
   <button class="btn" id="zoomOut" aria-label="축소"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg><span class="tip">축소<kbd>Ctrl ↓</kbd></span></button>

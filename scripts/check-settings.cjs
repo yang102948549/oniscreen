@@ -10,7 +10,9 @@ const element = id => {
     const classes = new Set();
     elements.set(id, {
     style: { setProperty() {} }, classList: { toggle(name, on) { if (on ?? !classes.has(name)) classes.add(name); else classes.delete(name); }, contains(name) { return classes.has(name); } }, dataset: {},
-    setAttribute(name, value) { this[name] = value; }, addEventListener() {}, contains() { return false; },
+    handlers: {}, capture: null,
+    setAttribute(name, value) { this[name] = value; }, addEventListener(name, fn) { this.handlers[name] = fn; }, contains() { return false; },
+    setPointerCapture(id) { this.capture = id; }, hasPointerCapture(id) { return this.capture === id; }, releasePointerCapture() { this.capture = null; },
     getAttribute(name) { return this[name] || '도구'; },
     replaceChildren(...children) { this.children = children; },
     getBoundingClientRect() { return { width: 800, bottom: 80 }; },
@@ -21,8 +23,9 @@ const element = id => {
 };
 const emitted = [];
 const events = {};
+let windowDrags = 0;
 const sandbox = {
-  window: { __TAURI__: { core: { invoke: async (name, args) => { native.push([name, args]); } }, event: { emit: (name, payload) => emitted.push([name, payload]), listen(name, fn) { events[name] = fn; } } } },
+  window: { __TAURI__: { window: { getCurrentWindow: () => ({ startDragging: async () => { windowDrags++; } }) }, core: { invoke: async (name, args) => { native.push([name, args]); } }, event: { emit: (name, payload) => emitted.push([name, payload]), listen(name, fn) { events[name] = fn; } } } },
   document: { querySelector: element, querySelectorAll: () => [] },
   localStorage: { getItem: k => data.get(k), setItem: (k, v) => data.set(k, v) },
   addEventListener() {}, ResizeObserver: class { observe() {} }, console,
@@ -31,6 +34,18 @@ vm.createContext(sandbox);
 const run = code => vm.runInContext(code, sandbox);
 run(fs.readFileSync('ui/shared.js', 'utf8'));
 run(fs.readFileSync('ui/toolbar.js', 'utf8'));
+assert.equal(run('loadSettings().keys.clear'), 'ctrl+shift+4');
+data.set('oniscreen-settings', JSON.stringify({ ver: 3, keys: { clear: 'ctrl+7' } }));
+assert.equal(run('loadSettings().keys.clear'), 'ctrl+shift+4', 'migrate old clear default');
+data.set('oniscreen-settings', JSON.stringify({ ver: 3, keys: { clear: 'ctrl+alt+4' } }));
+assert.equal(run('loadSettings().keys.clear'), 'ctrl+alt+4', 'preserve custom shortcuts');
+data.clear();
+run("setTool('eraser'); $('#eraseSelected').onclick();");
+assert.equal(run('st.tool'), 'eraser', 'selecting erase in the ribbon must keep the eraser active');
+assert(element('#stack').classList.contains('eraser-mode'));
+element('#clear').onclick();
+assert.equal(emitted.at(-1)[1].op, 'clear');
+run("setTool('eraser')");
 // Ribbon visibility must survive repeated zoom/settings renders.
 run("$('#fold').onclick()");
 for (let i = 0; i < 50; i++) run('render()');
@@ -43,6 +58,24 @@ assert.equal(run('toolbarFolded'), false);
 assert(!element('#stack').classList.contains('folded'));
 run("$('#fold').onclick(); $('#restore').onclick()");
 assert.equal(run('toolbarFolded'), false, 'the sole collapsed tool restores the toolbar');
+const restore = element('#restore');
+const drag = { button: 0, pointerId: 1, clientX: 20, clientY: 20, preventDefault() {} };
+run("$('#fold').onclick()");
+restore.handlers.pointerdown(drag);
+restore.handlers.pointermove({ ...drag, clientX: 23 });
+assert.equal(windowDrags, 0, 'small pointer movement must remain a click');
+restore.handlers.pointermove({ ...drag, clientX: 35 });
+assert.equal(windowDrags, 1, 'collapsed icon must start native window dragging');
+restore.handlers.pointerup(); restore.onclick({ detail: 1 });
+assert.equal(run('toolbarFolded'), true, 'dragging must not expand the toolbar');
+restore.handlers.pointerdown(drag); restore.handlers.pointerup(); restore.onclick({ detail: 1 });
+assert.equal(run('toolbarFolded'), false, 'a subsequent click must still expand the toolbar');
+const toolbarHtml = fs.readFileSync('ui/toolbar.html', 'utf8');
+const eraserRibbon = toolbarHtml.match(/<div class="bar eraser-ribbon"[\s\S]*?<\/div>/)?.[0];
+assert(eraserRibbon?.includes('id="eraseSelected"') && eraserRibbon.includes('id="clear"'), 'both eraser actions must be inside the eraser menu');
+assert.equal((toolbarHtml.match(/id="clear"/g) || []).length, 1, 'clear action must not be duplicated on the main toolbar');
+assert(toolbarHtml.includes('m8 13 9-9 4 4-9 9H8z'), 'updated highlighter icon must ship');
+assert(toolbarHtml.includes('m4 13 9-9a2 2'), 'updated eraser icon must ship');
 events.hotkey({ payload: 'zout' });
 assert.equal(native.at(-1)[0], 'zoom_step');
 assert(native.at(-1)[1].d < 0, 'Ctrl+Down must request a negative zoom step');

@@ -30,12 +30,12 @@ const HALO_COLORS = [
 
 // 전역 단축키 기본값(설정에서 바꿀 수 있다). 형식은 Rust/tauri와 같다: `ctrl+alt+up`
 const DEFAULT_KEYS = {
-  zin: 'ctrl+1', pen: 'ctrl+2', hl: 'ctrl+3', eraser: 'ctrl+4', text: 'ctrl+5', ptr: 'ctrl+6', clear: 'ctrl+7',
+  zin: 'ctrl+1', pen: 'ctrl+2', hl: 'ctrl+3', eraser: 'ctrl+4', text: 'ctrl+5', ptr: 'ctrl+6', clear: 'ctrl+shift+4',
   zoom: 'ctrl+alt+z', board: 'ctrl+0',
   'shot-copy': 'ctrl+alt+c', quit: 'ctrl+alt+q',
 };
 const KEY_LABELS = {
-  zoom: '확대 켜기/끄기', zin: '일반 줌 (+)', pen: '펜', hl: '형광펜', eraser: '지우개', text: '텍스트',
+  zoom: '확대 켜기/끄기', zin: '일반 줌 (+)', pen: '펜', hl: '형광펜', eraser: '선택 지우기', text: '텍스트',
   ptr: '포인터 강조', clear: '모두 지우기', board: '화이트보드/칠판', 'shot-copy': '화면 복사',
   quit: '종료',
 };
@@ -54,12 +54,13 @@ function comboFromEvent(e) {
 }
 
 const SETTINGS_KEY = 'oniscreen-settings';
-const SETTINGS_VER = 3;
+const SETTINGS_VER = 4;
 const DEFAULTS = { haloOn: true, ripple: true, haloSize: 44, haloOpacity: 100, zoomDefault: 2, zoomStep: 0.25, zoomLadder: false, drawView: 'stroke', keys: DEFAULT_KEYS, penColor: '#292927', textColor: '#292927', zoomTarget: -1, hotkeys: true, haloColor: '35,131,226', rippleColor: '35,131,226', penWidth: 4, textSize: 28, reduceMotion: false };
 
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    if ((saved.ver || 0) < 4 && saved.keys?.clear === 'ctrl+7') saved.keys.clear = DEFAULT_KEYS.clear;
     // 기본 단축키/확대 방식을 바꾼 버전: 이전에 자동 저장된 값은 버린다
     if (saved.keys) { delete saved.keys.zout; delete saved.keys.record; delete saved.keys['shot-save']; }
     if (saved.keys) delete saved.keys['zoom-mode'];

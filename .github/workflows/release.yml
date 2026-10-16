@@ -20,8 +20,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
+      - name: Check toolbar and overlay regressions
+        run: |
+          node scripts/check-settings.cjs
+          node scripts/check-overlay.cjs
       - run: cargo test --locked
-      - run: npx tauri build
+      - run: npx tauri build -- --locked
       - name: Collect artifacts
         shell: pwsh
         run: |
