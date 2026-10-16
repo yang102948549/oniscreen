@@ -33,11 +33,16 @@ function render() {
   st.color = settings[st.tool === 'text' ? 'textColor' : 'penColor'];
   $('#zoomFixed').setAttribute('aria-pressed', String(st.zoomActive));
   $('#palette').setAttribute('aria-label', !st.tool ? '포인터 색상' : st.tool === 'text' ? '텍스트 색상' : '펜 색상');
-  stack.classList.toggle('pointer-mode', !st.tool);
+  stack.classList.toggle('pointer-mode', !st.tool && !st.zoomActive);
+  stack.classList.toggle('zoom-mode', st.zoomActive);
+  const activeButton = st.tool === 'shape' ? document.querySelector(`#shapes [data-shape="${st.shape}"]`) : st.tool ? document.querySelector(`#tools [data-tool="${st.tool}"]`) : st.zoomActive ? $('#zoomFixed') : ptrBtn;
+  $('#restore').replaceChildren(activeButton.querySelector('svg').cloneNode(true));
+  $('#restore').setAttribute('aria-label', `${activeButton.getAttribute('aria-label')} · 툴바 펼치기`);
   bar.classList.toggle('folded', toolbarFolded);
   stack.classList.toggle('folded', toolbarFolded);
   $('#fold').setAttribute('aria-expanded', String(!toolbarFolded));
   $('#fold').setAttribute('aria-label', toolbarFolded ? '펼치기' : '접기');
+  $('#fold .tip').textContent = toolbarFolded ? '툴바 펼치기' : '툴바 접기';
   toolBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === st.tool)));
   shapeBtns.forEach((b) => b.setAttribute('aria-pressed', String(st.tool === 'shape' && b.dataset.shape === st.shape)));
   ptrBtn.setAttribute('aria-pressed', String(settings.haloOn));
@@ -72,7 +77,7 @@ const pushState = () => {
   syncKeys();
 };
 // 전역 키: Esc는 확대/도구가 있는 동안, Ctrl+Z는 도구가 켜진 동안, 색상 글자는 텍스트 입력 중이 아닐 때만
-const syncKeys = () => invoke('grab_keys', { esc: st.zoomActive || !!st.tool || !!st.board, undo: !!st.tool, keys: isDrawing() && !st.editing, zoom: st.zoomActive });
+const syncKeys = () => invoke('grab_keys', { esc: st.zoomActive || !!st.tool || !!st.board, undo: !!st.tool, keys: isDrawing() && !st.editing, zoom: st.zoomActive, editing: st.editing });
 
 function setTool(t) { st.tool = st.tool === t ? null : t; render(); pushState(); }
 function setShape(id) {
@@ -135,6 +140,9 @@ for (const [id, key] of [['#pointerOpacity', 'haloOpacity'], ['#pointerSize', 'h
 ptrBtn.onclick = togglePointer;
 ptrBtn.oncontextmenu = (e) => { e.preventDefault(); invoke('open_settings'); };
 $('#zoomFixed').onclick = toggleZoom;
+$('#zoomOut').onclick = () => zoomStep(-0.25);
+$('#zoomIn').onclick = () => zoomStep(0.25);
+$('#zoomExit').onclick = () => invoke('zoom_exit');
 $('#zoomRange').oninput = e => {
   zoomRangeDragging = true;
   settings = loadSettings(); settings.zoomDefault = Number(e.target.value); saveSettings(settings);
@@ -152,6 +160,7 @@ $('#fold').onclick = () => {
   if (toolbarFolded) popupMenus.forEach(menu => { menu.open = false; });
   render(); resizeToolbar();
 };
+$('#restore').onclick = () => { toolbarFolded = false; render(); resizeToolbar(); };
 
 // 글자 단축키(ZoomIt): 색상 R G B O Y K W. 기본 색은 설정에서 고른다.
 const COLOR_KEY = Object.fromEntries(PEN_COLORS.map((c) => [c.key, c.hex]));
@@ -162,7 +171,7 @@ listen('hotkey', (e) => {
   const a = e.payload;
   if (typeof a === 'string' && a.startsWith('key:')) { if (isDrawing() && !st.editing) letterKey(a.slice(4)); return; }
   ({
-    zoom: toggleZoom, zin: zoomIn,
+    zoom: toggleZoom, zin: zoomIn, zout: () => zoomStep(-0.25),
     esc: () => {
       if (st.editing) emit('text-cancel');
       else if (st.zoomActive) invoke('zoom_exit');
@@ -229,7 +238,7 @@ async function resizeToolbar() {
   finally { resizeRunning = false; }
 }
 new ResizeObserver(resizeToolbar).observe(stack);
-const popupMenus = [document.querySelector('.width-menu'), document.querySelector('.zoom-menu'), document.querySelector('.pointer-size-menu')];
+const popupMenus = [document.querySelector('.width-menu'), document.querySelector('.pointer-size-menu')];
 for (const menu of popupMenus) {
   menu.addEventListener('toggle', () => {
     if (menu.open) popupMenus.forEach(other => { if (other !== menu) other.open = false; });

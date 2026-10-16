@@ -46,6 +46,7 @@ enum MagCmd {
 }
 
 struct AppState {
+    live_enabled: AtomicBool,
     wheel_ladder: AtomicBool,
     wheel_step: AtomicU32,
     /// 사용자가 지정한 전역 단축키(등록된 조합) — 다시 지정할 때 먼저 해제한다
@@ -63,6 +64,7 @@ const NONE: usize = usize::MAX;
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            live_enabled: AtomicBool::new(false),
             wheel_ladder: AtomicBool::new(false),
             wheel_step: AtomicU32::new(0.25f32.to_bits()),
             custom_keys: Mutex::new(vec![]),
@@ -345,12 +347,14 @@ fn spawn_magnifier(app: AppHandle) {
                 let local = ((cur.0 - mon.0) as f32, (cur.1 - mon.1) as f32);
                 // Live mode maps the source point under the pointer to that same display position.
                 // Key-up may be lost when focus changes: never follow after Space is released.
-                if following && !win::space_down() { following = false; }
+                // Physical state survives WebView focus changes; text input disables it.
+                following = app.state::<AppState>().live_enabled.load(Ordering::Relaxed)
+                    && win::space_down() && !win::modifier_keys().2;
                 let live = following;
                 let held = false;
-                let still = frozen && (!hold || win::buttons().0);
+                let still = frozen && (!hold || win::buttons().0) && (!live || win::buttons().0);
                 let on_screen = cur.0 >= mon.0 && cur.0 < mon.0 + mon.2 && cur.1 >= mon.1 && cur.1 < mon.1 + mon.3;
-                if live && !still && !closing && on_screen && !over_toolbar(&app, cur.0, cur.1) {
+                if live && !win::buttons().0 && !closing && on_screen && !over_toolbar(&app, cur.0, cur.1) {
                     off = follow_offset((mon.2, mon.3), local, za);
                 } else if (za - za_prev).abs() > f32::EPSILON {
                     // 필기 중 배율이 바뀌어도 커서 아래 점이 고정되게 한다.
@@ -496,7 +500,8 @@ fn zoom_freeze(app: AppHandle, on: bool, hold: bool) {
 /// 색상 글자키는 ZoomIt과 같다: R 레드 · G 그린 · B 블루 · O 오렌지 · Y 옐로 · K 검정 · W 흰색.
 /// 텍스트 입력 중에는 글자가 입력창으로 가야 하므로 `keys`를 끈다.
 #[tauri::command]
-fn grab_keys(app: AppHandle, esc: bool, undo: bool, keys: bool, zoom: bool) {
+fn grab_keys(app: AppHandle, esc: bool, undo: bool, keys: bool, zoom: bool, editing: bool) {
+    app.state::<AppState>().live_enabled.store(zoom && !editing, Ordering::Relaxed);
     let gs = app.global_shortcut();
     let mut table: Vec<(String, String, bool)> = vec![
         ("escape".into(), "esc".into(), esc),

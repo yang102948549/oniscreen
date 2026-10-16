@@ -71,25 +71,29 @@
   .btn:hover .tip { opacity: 1; }
   kbd { font: 500 11px/1 "Noto Sans KR", sans-serif; background: rgba(255, 255, 255, .18); border-radius: 4px; padding: 2px 4px; margin-left: 6px; }
 
-  /* 접힘: 아이콘 · 포인터 강조 · 펼치기만 남김 */
+  /* 접힌 현재 도구를 누르면 툴바를 펼친다. */
+  #restore { display: none; }
   .bar.folded { border-radius: 999px; padding: 4px; }
-  .bar.folded > :not(.keep) { display: none; }
+  .bar.folded > :not(#restore) { display: none; }
+  .bar.folded #restore { display: grid; }
   .bar.folded .btn { border-radius: 50%; width: var(--oni-control-sm); height: var(--oni-control-sm); }
   .bar.folded .brand { margin: 0 2px 0 4px; }
   #fold svg { transition: transform .12s; }
-  .bar.folded #fold svg { transform: rotate(180deg); }
+  .zoom-ribbon { display: none; }
+  .zoom-mode:not(.folded) #sub { display: none; }
+  .zoom-mode:not(.folded) .zoom-ribbon { display: flex; align-items: center; gap: 8px; }
+  .zoom-ribbon .hint { font-size: 12px; color: var(--oni-text-secondary); white-space: nowrap; }
+  .zoom-ribbon #zoomRange { flex: 1; min-width: 80px; }
 </style>
 </head>
 <body>
 <div class="stack" id="stack">
 <div class="bar" id="bar">
+  <button class="btn" id="restore" aria-label="툴바 펼치기"></button>
   <img class="brand keep" src="assets/oni-screen.svg" width="22" height="22" alt="OniScreen" title="메뉴바 이동">
 
   <div class="zoom" role="group" aria-label="확대">
-    <button class="btn" id="zoomFixed" aria-label="일반 줌" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5M7 10h6M10 7v6"/></svg><span class="tip">줌 · Space를 누르는 동안 이동</span></button>
-    <details class="zoom-menu"><summary aria-label="배율 설정" title="배율 설정"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h8M6 8v8M14 12h8"/></svg></summary><div class="zoom-options" role="group" aria-label="확대 배율">
-      <input id="zoomRange" type="range" min="1.25" max="8" step="0.25" aria-label="확대 배율"><output id="zoomValue" for="zoomRange">2×</output>
-    </div></details>
+    <button class="btn" id="zoomFixed" aria-label="화면 확대" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15.5 15.5 5 5M7 10h6M10 7v6"/></svg><span class="tip">화면 확대 · Ctrl 1</span></button>
 
   </div>
 
@@ -114,10 +118,18 @@
   <button class="btn" id="gear" aria-label="설정"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span class="tip">설정</span></button>
 
   <div class="sep"></div>
-  <button class="btn keep" id="fold" aria-label="접기"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg><span class="tip">접기 / 펼치기</span></button>
+  <button class="btn keep" id="fold" aria-label="접기"><svg viewBox="0 0 24 24"><path d="m7 14 5-5 5 5"/></svg><span class="tip">툴바 접기</span></button>
   <button class="btn keep danger" id="quit" aria-label="종료"><svg viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M7 6.5a8 8 0 1 0 10 0"/></svg><span class="tip">종료<kbd>Ctrl Alt Q</kbd></span></button>
 </div>
 
+<div class="bar zoom-ribbon" role="toolbar" aria-label="화면 확대 옵션">
+  <span class="lbl">화면 확대</span>
+  <button class="btn" id="zoomOut" aria-label="축소"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg><span class="tip">축소<kbd>Ctrl ↓</kbd></span></button>
+  <input id="zoomRange" type="range" min="1" max="8" step="0.25" aria-label="확대 배율"><output id="zoomValue" for="zoomRange">2×</output>
+  <button class="btn" id="zoomIn" aria-label="확대"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg><span class="tip">확대<kbd>Ctrl ↑</kbd></span></button>
+  <span class="hint">Space 누름 · 라이브 줌</span>
+  <button class="btn wide" id="zoomExit" aria-label="확대 종료">종료<span class="tip">확대 종료<kbd>Esc</kbd></span></button>
+</div>
 <div class="bar sub" id="sub" role="toolbar" aria-label="그리기 옵션">
   <span class="lbl">도형</span>
   <div class="group" id="shapes" role="group" aria-label="도형">

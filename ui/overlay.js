@@ -359,7 +359,6 @@
     if (!mine) { view.ox = view.oy = 0; stopFollowing(); }
     syncInteractive();
     if (entering || leaving) invoke('focus_overlay', { index: m, on: mine || !!editing });
-    if (entering) toast('줌 · Space를 누르는 동안 이동 · 놓으면 고정 · Esc 종료');
     positionText();
     dirty = true;
   });

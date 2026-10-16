@@ -10,16 +10,19 @@ const element = id => {
     const classes = new Set();
     elements.set(id, {
     style: { setProperty() {} }, classList: { toggle(name, on) { if (on ?? !classes.has(name)) classes.add(name); else classes.delete(name); }, contains(name) { return classes.has(name); } }, dataset: {},
-    setAttribute() {}, addEventListener() {}, contains() { return false; },
+    setAttribute(name, value) { this[name] = value; }, addEventListener() {}, contains() { return false; },
+    getAttribute(name) { return this[name] || '도구'; },
+    replaceChildren(...children) { this.children = children; },
     getBoundingClientRect() { return { width: 800, bottom: 80 }; },
-    querySelector() { return null; }
+    querySelector(selector) { return selector === 'svg' ? { cloneNode() { return { tagName: 'svg' }; } } : null; }
   });
   }
   return elements.get(id);
 };
 const emitted = [];
+const events = {};
 const sandbox = {
-  window: { __TAURI__: { core: { invoke: async (name, args) => { native.push([name, args]); } }, event: { emit: (name, payload) => emitted.push([name, payload]), listen() {} } } },
+  window: { __TAURI__: { core: { invoke: async (name, args) => { native.push([name, args]); } }, event: { emit: (name, payload) => emitted.push([name, payload]), listen(name, fn) { events[name] = fn; } } } },
   document: { querySelector: element, querySelectorAll: () => [] },
   localStorage: { getItem: k => data.get(k), setItem: (k, v) => data.set(k, v) },
   addEventListener() {}, ResizeObserver: class { observe() {} }, console,
@@ -38,6 +41,14 @@ run("$('#fold').onclick()");
 for (let i = 0; i < 50; i++) run('render()');
 assert.equal(run('toolbarFolded'), false);
 assert(!element('#stack').classList.contains('folded'));
+run("$('#fold').onclick(); $('#restore').onclick()");
+assert.equal(run('toolbarFolded'), false, 'the sole collapsed tool restores the toolbar');
+events.hotkey({ payload: 'zout' });
+assert.equal(native.at(-1)[0], 'zoom_step');
+assert(native.at(-1)[1].d < 0, 'Ctrl+Down must request a negative zoom step');
+run('st.zoomActive = true; st.editing = true; syncKeys();');
+assert.equal(native.at(-1)[1].editing, true, 'native live zoom must be disabled during text editing');
+run('st.zoomActive = false; st.editing = false;');
 await run('resizeToolbar()');
 await Promise.resolve();
 const resizeCount = native.filter(([name]) => name === 'resize_toolbar').length;
