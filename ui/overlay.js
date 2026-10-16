@@ -246,7 +246,7 @@
     e.stopPropagation();
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); commitText(); }
   });
-  tbox.addEventListener('blur', () => { const current = editing; setTimeout(() => { if (editing === current && !textEditor.contains(document.activeElement)) commitText(); }, 0); });
+  tbox.addEventListener('blur', () => { const current = editing; setTimeout(() => { if (editing === current && !textMove && !textDrag && !textEditor.contains(document.activeElement)) commitText(); }, 0); });
   listen('text-cancel', () => closeText(false));
   for (const id of ['#textDelete']) {
     $(id).addEventListener('pointerdown', e => e.preventDefault());
@@ -285,23 +285,31 @@
     e.preventDefault(); e.stopPropagation();
     resizeText(editing.size + (['ArrowUp', 'ArrowRight'].includes(e.key) ? 2 : -2)); saveTextSize();
   });
-  const moveHandle = $('#textMove');
-  moveHandle.addEventListener('pointerdown', e => {
+  const moveHandle = $('#textMove'), textActions = $('#textActions');
+  const startTextMove = (e, handle) => {
     if (e.button !== 0 || !editing) return;
     e.preventDefault(); e.stopPropagation();
     const [x, y] = local(e);
-    textMove = { x, y, originX: editing.x, originY: editing.y };
-    moveHandle.setPointerCapture(e.pointerId);
+    textMove = { x, y, originX: editing.x, originY: editing.y, pointerId: e.pointerId };
+    handle.setPointerCapture(e.pointerId);
+  };
+  moveHandle.addEventListener('pointerdown', e => startTextMove(e, moveHandle));
+  textActions.addEventListener('pointerdown', e => {
+    if (e.target.closest('button, details, input')) return;
+    startTextMove(e, textActions);
   });
-  moveHandle.addEventListener('pointermove', e => {
-    if (!textMove || !editing) return;
+  const moveText = e => {
+    if (!textMove || !editing || e.pointerId !== textMove.pointerId) return;
     const [x, y] = local(e);
     editing.x = clamp(textMove.originX + x - textMove.x, 0, W - 16 * dpr / zf());
     editing.y = clamp(textMove.originY + y - textMove.y, 0, H - editing.size * dpr / zf());
     positionText();
-  });
+  };
   const finishTextMove = () => { if (!textMove) return; textMove = null; tbox.focus({ preventScroll: true }); };
-  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) moveHandle.addEventListener(event, finishTextMove);
+  for (const handle of [moveHandle, textActions]) {
+    handle.addEventListener('pointermove', moveText);
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) handle.addEventListener(event, finishTextMove);
+  }
 
   // ───── 포인터 이벤트(필기) ─────
   const local = (e) => {

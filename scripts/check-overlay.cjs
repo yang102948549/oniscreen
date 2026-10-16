@@ -4,6 +4,7 @@ const vm = require('node:vm');
 (async () => {
   const events = {}, calls = [], globals = {};
   let frame; const drawn = [];
+  const timers = [];
   const ctx = new Proxy({}, { get: (o, k) => o[k] || (() => {}) });
   ctx.fillText = (text, x, y) => drawn.push({ text, x, y, font: ctx.font });
   ctx.measureText = text => ({ width: text.length * 20 });
@@ -15,7 +16,7 @@ const vm = require('node:vm');
       addEventListener(k, f) { this.handlers[k] = f; },
       getContext() { return ctx; },
       getBoundingClientRect() { return { left: 0, top: 0, width: 1280, height: 720 }; },
-      setPointerCapture() {}, focus() {},
+      setPointerCapture() {}, focus() {}, contains() { return false; },
     };
   }
   const sandbox = {
@@ -27,7 +28,7 @@ const vm = require('node:vm');
     saveSettings() {},
     PEN_COLORS: [{ hex: '#292927' }], MIN_PEN: 2, MAX_PEN: 40,
     hexToRgb: () => '0,0,0', RIPPLE_RIGHT: '',
-    requestAnimationFrame(f) { frame = f; }, performance, setTimeout: () => 0, clearTimeout() {},
+    requestAnimationFrame(f) { frame = f; }, performance, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
     addEventListener: (k, f) => { globals[k] = f; },
     document: { activeElement: null }, console,
   };
@@ -50,6 +51,21 @@ const vm = require('node:vm');
   await new Promise(setImmediate);
   assert.equal(element('#textEditor').style.left, '300px');
   assert.equal(element('#textEditor').style.top, '200px');
+  const actions = element('#textActions');
+  const draftDrag = { ...click, pointerId: 7, stopPropagation() {}, target: { closest() { return null; } } };
+  element('#tbox').innerText = '입력 중';
+  actions.handlers.pointerdown(draftDrag);
+  element('#tbox').handlers.blur();
+  while (timers.length) timers.shift()();
+  assert.equal(element('#textEditor').hidden, false, 'blur during a drag must not commit the draft');
+  actions.handlers.pointermove({ clientX: 380, clientY: 240, pointerId: 7 });
+  assert.equal(element('#textEditor').style.left, '380px', 'the header moves text while typing');
+  assert.equal(element('#textEditor').style.top, '240px');
+  assert.equal(element('#tbox').innerText, '입력 중', 'dragging must preserve the draft');
+  actions.handlers.pointermove({ ...click, pointerId: 7 });
+  actions.handlers.pointerup();
+  actions.handlers.pointermove({ clientX: 700, clientY: 700, pointerId: 7 });
+  assert.equal(element('#textEditor').style.left, '300px', 'movement must end on pointerup');
   const previous = calls.filter(([n]) => n === 'zoom_follow').length;
   globals.keydown(key);
   assert.equal(calls.filter(([n]) => n === 'zoom_follow').length, previous, 'Space must remain text while editing');
@@ -77,7 +93,7 @@ const vm = require('node:vm');
   assert.equal(element('#tbox').textContent, '크기 확인', 'clicking existing text selects it for editing');
   const move = element('#textMove');
   move.handlers.pointerdown({ ...click, pointerId: 3, stopPropagation() {} });
-  move.handlers.pointermove({ clientX: 380, clientY: 240 });
+  move.handlers.pointermove({ clientX: 380, clientY: 240, pointerId: 3 });
   move.handlers.pointerup();
   assert.equal(element('#textEditor').style.left, '380px');
   assert.equal(element('#textEditor').style.top, '240px');
