@@ -5,12 +5,12 @@ const { emit, listen } = T.event;
 
 // 팔레트는 Oni 토큰 색에 ZoomIt의 색상 단축키(R·G·B·O·Y)를 맞춘 것이다. key = 도구가 켜져 있을 때 누르는 글자.
 const PEN_COLORS = [
-  { hex: '#292927', name: '검정', key: 'k' },
+  { hex: '#F2D13B', name: '옐로', key: 'y' },
   { hex: '#2383E2', name: '블루', key: 'b' },
   { hex: '#C43F35', name: '레드', key: 'r' },
   { hex: '#20AD96', name: '그린', key: 'g' },
   { hex: '#EBA640', name: '오렌지', key: 'o' },
-  { hex: '#F2D13B', name: '옐로', key: 'y' },
+  { hex: '#292927', name: '검정', key: 'k' },
   { hex: '#FFFFFF', name: '화이트', key: 'w' },
 ];
 // ZoomIt 도형: Shift = 선, Ctrl = 사각형, Tab = 타원, Ctrl+Shift = 화살표
@@ -54,12 +54,17 @@ function comboFromEvent(e) {
 }
 
 const SETTINGS_KEY = 'oniscreen-settings';
-const SETTINGS_VER = 4;
-const DEFAULTS = { haloOn: true, ripple: true, haloSize: 44, haloOpacity: 100, zoomDefault: 2, zoomStep: 0.25, zoomLadder: false, drawView: 'stroke', keys: DEFAULT_KEYS, penColor: '#292927', textColor: '#292927', zoomTarget: -1, hotkeys: true, haloColor: '35,131,226', rippleColor: '35,131,226', penWidth: 4, textSize: 28, reduceMotion: false };
+const SETTINGS_VER = 5;
+const DEFAULTS = { haloOn: true, ripple: true, haloSize: 44, haloOpacity: 100, zoomDefault: 2, zoomStep: 0.25, zoomLadder: false, drawView: 'stroke', keys: DEFAULT_KEYS, penColor: '#F2D13B', textColor: '#F2D13B', zoomTarget: -1, hotkeys: true, haloColor: '35,131,226', rippleColor: '35,131,226', penWidth: 4, textSize: 28, reduceMotion: false };
 
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    if ((saved.ver || 0) < 5) {
+      for (const key of ['penColor', 'textColor']) {
+        if (saved[key]?.toUpperCase() === '#292927') saved[key] = DEFAULTS[key];
+      }
+    }
     if ((saved.ver || 0) < 4 && saved.keys?.clear === 'ctrl+7') saved.keys.clear = DEFAULT_KEYS.clear;
     // 기본 단축키/확대 방식을 바꾼 버전: 이전에 자동 저장된 값은 버린다
     if (saved.keys) { delete saved.keys.zout; delete saved.keys.record; delete saved.keys['shot-save']; }

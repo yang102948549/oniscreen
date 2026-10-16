@@ -34,6 +34,24 @@ vm.createContext(sandbox);
 const run = code => vm.runInContext(code, sandbox);
 run(fs.readFileSync('ui/shared.js', 'utf8'));
 run(fs.readFileSync('ui/toolbar.js', 'utf8'));
+assert.equal(run('PEN_COLORS[0].hex'), '#F2D13B', 'the first drawing swatch must be yellow');
+assert.equal(run('loadSettings().penColor'), '#F2D13B');
+assert.equal(run('loadSettings().textColor'), '#F2D13B');
+for (const tool of ['pen', 'hl', 'text']) {
+  run(`setTool('${tool}')`);
+  assert.equal(emitted.filter(([name]) => name === 'state').at(-1)[1].color, '#F2D13B', `${tool} starts yellow`);
+}
+run("setTool('text')");
+data.set('oniscreen-settings', JSON.stringify({ ver: 4, penColor: '#292927', textColor: '#292927' }));
+assert.equal(run('loadSettings().penColor'), '#F2D13B', 'migrate the previous black default');
+assert.equal(run('loadSettings().textColor'), '#F2D13B');
+data.set('oniscreen-settings', JSON.stringify({ ver: 4, penColor: '#C43F35', textColor: '#2383E2' }));
+assert.equal(run('loadSettings().penColor'), '#C43F35', 'preserve other saved colors');
+assert.equal(run('loadSettings().textColor'), '#2383E2');
+data.set('oniscreen-settings', JSON.stringify({ ver: 5, penColor: '#292927', textColor: '#292927' }));
+assert.equal(run('loadSettings().penColor'), '#292927', 'black selected after migration remains available');
+data.clear();
+run('settings = loadSettings(); render();');
 assert.equal(run('loadSettings().keys.clear'), 'ctrl+shift+4');
 data.set('oniscreen-settings', JSON.stringify({ ver: 3, keys: { clear: 'ctrl+7' } }));
 assert.equal(run('loadSettings().keys.clear'), 'ctrl+shift+4', 'migrate old clear default');

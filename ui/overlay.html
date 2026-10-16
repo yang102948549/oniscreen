@@ -50,8 +50,8 @@
   #textDelete:hover { color: #C43F35; }
 
   /* 토스트·펜 굵기 표시: 툴바와 같은 Oni 토큰(표면·테두리·그림자·12px 모서리) */
-  :root { --surface: rgba(248,250,255,.8); --border: rgba(90,110,140,.22); --text: #182332; --focus: #2383E2; }
-  #textActions, .text-size-options { border-radius: 12px; backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); box-shadow: 0 3px 8px rgba(20,35,60,.14), inset 0 1px 0 rgba(255,255,255,.5); }
+  :root { --surface: rgba(240,248,255,.3); --border: rgba(255,255,255,.65); --text: #182332; --focus: #2383E2; }
+  #textActions, .text-size-options { border-radius: 12px; background: linear-gradient(160deg, rgba(255,255,255,.34), transparent 45%, rgba(255,255,255,.2)), var(--surface); backdrop-filter: blur(12px) saturate(180%); -webkit-backdrop-filter: blur(12px) saturate(180%); box-shadow: 0 3px 8px rgba(20,35,60,.2), inset 0 1px 1px rgba(255,255,255,.9), inset 0 -1px 1px rgba(255,255,255,.5); }
   #toast {
     position: absolute; left: 50%; top: 28px; transform: translate(-50%, -8px); max-width: 70vw;
     padding: 8px 14px; border-radius: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--border);
@@ -66,7 +66,7 @@
     --d: 4px; position: absolute; left: calc(var(--d) / -2); top: calc(var(--d) / -2); width: var(--d); height: var(--d);
     border-radius: 50%; border: 1.5px solid var(--focus); background: rgba(35,131,226,.15); box-sizing: content-box;
   }
-  @media (prefers-color-scheme: dark) { :root { --surface: rgba(35,43,55,.84); --border: rgba(210,225,245,.25); --text: #F3F3F1; } }
+  @media (prefers-color-scheme: dark) { :root { --surface: rgba(35,43,55,.36); --border: rgba(210,225,245,.4); --text: #F3F3F1; } }
 
   .ripple {
     position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; box-sizing: border-box;
